@@ -1,0 +1,11 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run Jai Build",
+            "type": "shell",
+            "command": "jai first.jai",
+            "problemMatcher": []
+        }
+    ]
+}

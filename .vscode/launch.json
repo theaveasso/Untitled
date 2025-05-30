@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch(gdb)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "preLaunchTask": "Run Jai Build",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/untitled.exe",
+            "console": "integratedTerminal"
+        }
+    ],
+}
