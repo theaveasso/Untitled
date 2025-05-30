@@ -20,7 +20,7 @@ renderer_init :: () -> bool {
     defer glBindVertexArray(0);
 
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, size_of(Vector4), cast (*void) 0);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, size_of(Vector4), cast (*void) 0);
 
     return sucess;
 }
@@ -31,7 +31,12 @@ immediate_mesh :: (model : Matrix4 = Matrix4_Identity) {
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_ibo);
     glUseProgram(g_program);
 
-    set_uniform_matrix4(g_program, "model", model);
+    dt := sin(seconds_since_init() * 2) / 2;
+
+    rotation : Quaternion;
+    set_from_axis_and_angle(*rotation, .{0, 1, 0}, xx dt);
+
+    set_uniform_matrix4(g_program, "model", rotation_matrix(Matrix4, rotation));
     set_uniform_matrix4(g_program, "viewproj", g_camera.view_proj);
 
     glDrawElements(GL_TRIANGLE_STRIP, cast(u32) indices.count, GL_UNSIGNED_INT, null);
@@ -71,10 +76,10 @@ GLSL
 #scope_file
 
 vertices : [4]Vector4 = .[
-    .{-1, -1, -10, 1},
-    .{ 1, -1, -10, 1},
-    .{-1,  1, -10, 1},
-    .{ 1,  1, -10, 1},
+    .{-1, -1, -5, 1},
+    .{ 1, -1, -5, 1},
+    .{-1,  1, -5, 1},
+    .{ 1,  1, -5, 1},
 ];
 
 indices  : [4]u32 = .[0, 1, 2, 3];

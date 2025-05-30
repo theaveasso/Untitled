@@ -15,7 +15,6 @@ main :: () {
     Simp.set_render_target(g_window);
 
     glEnable(GL_CULL_FACE);
-    glEnable(GL_DEPTH_TEST);
     glLogicOp(GL_INVERT);
 
     if !renderer\_init() exit(1);
