@@ -1,15 +1,24 @@
-g_program : GLuint;
-g_vao, g_vbo, g_ibo : GLuint;
-g_cube_vao, g_cube_vbo, g_cube_ibo : GLuint;
+g_program, g_light_program  : GLuint;
+
+g_vao, g_vbo, g_ibo                 : GLuint;
+g_cube_vao, g_cube_vbo, g_cube_ibo  : GLuint;
+g_light_vao, g_light_vbo            : GLuint;
+
+g_light_source := Vector3.{1.2, 1.0, 2.0};
 
 Vertex :: struct {
     position := Vector4.{0.0, 0.0, 0.0, 0.0};
+    normal   := Vector3.{0.0, 0.0, 0.0};
     uv       := Vector2.{0.0, 1.0};
 }
 
 renderer_init :: () -> bool {
-    sucess : bool;
-    sucess, g_program = create_shader_program(VERT_SHADER, FRAG_SHADER);
+    success : bool;
+    success, g_program = create_shader_program(VERT_SHADER, FRAG_SHADER);
+    if !success return false;
+
+    success, g_light_program = create_shader_program(LIGHT_VERT_SHADER, LIGHT_FRAG_SHADER);
+    if !success return false;
 
     glGenVertexArrays(1, *g_vao);
     glBindVertexArray(g_vao);
@@ -25,7 +34,9 @@ renderer_init :: () -> bool {
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, size_of(Vertex), cast(*void)0);
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, size_of(Vertex), cast(*void)size_of(Vector4));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, size_of(Vertex), cast(*void)size_of(Vector4));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, size_of(Vertex), cast(*void)(size_of(Vector4) + size_of(Vector3)));
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
@@ -38,44 +49,46 @@ renderer_init :: () -> bool {
     glBindBuffer(GL_ARRAY_BUFFER, g_cube_vbo);
     glBufferData(GL_ARRAY_BUFFER, size_of(Vertex) * cube_vertices.count, cube_vertices.data, GL_STATIC_DRAW);
 
-    // glGenBuffers(1, *g_cube_ibo);
-    // glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_cube_ibo);
-    // glBufferData(GL_ELEMENT_ARRAY_BUFFER, size_of(u32) * cube_indices.count, cube_indices.data, GL_STATIC_DRAW);
-
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, size_of(Vertex), cast(*void)0);
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, size_of(Vertex), cast(*void)size_of(Vector4));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, size_of(Vertex), cast(*void)size_of(Vector4));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, size_of(Vertex), cast(*void)(size_of(Vector4) + size_of(Vector3)));
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
-    // glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 
-    return sucess;
+    glGenVertexArrays(1, *g_light_vao);
+    glBindVertexArray(g_light_vao);
+
+    glGenBuffers(1, *g_light_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, g_light_vbo);
+    glBufferData(GL_ARRAY_BUFFER, size_of(Vertex) * cube_vertices.count, cube_vertices.data, GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, size_of(Vertex), cast(*void)0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    return success;
 }
 
-immediate_mesh :: (model : Matrix4 = Matrix4_Identity) {
-    glBindVertexArray(g_vao);
-    glBindBuffer(GL_ARRAY_BUFFER, g_vbo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_ibo);
-    glUseProgram(g_program);
+immediate_light :: (model : Matrix4 = Matrix4_Identity) {
+    glUseProgram(g_light_program);
+    glBindVertexArray(g_light_vao);
 
-    dt := sin(seconds_since_init() * 2) / 2;
+    set_uniform(g_light_program, "model", Matrix4, model);
+    set_uniform(g_light_program, "viewproj", Matrix4, g_camera.view_proj);
 
-    rotation : Quaternion;
-    set_from_axis_and_angle(*rotation, .{0, 1, 0}, xx dt);
-
-    set_uniform_matrix4(g_program, "model", rotation_matrix(Matrix4, rotation));
-    set_uniform_matrix4(g_program, "viewproj", g_camera.view_proj);
-
-    glDrawElements(GL_TRIANGLE_STRIP, cast(u32) indices.count, GL_UNSIGNED_INT, null);
+    glDrawArrays(GL_TRIANGLES, 0, cast(u32) cube_vertices.count);
 }
 
 immediate_cube :: (model : Matrix4 = Matrix4_Identity) {
-    glBindVertexArray(g_cube_vao);
-    glBindBuffer(GL_ARRAY_BUFFER, g_cube_vbo);
-    // glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_cube_ibo);
     glUseProgram(g_program);
+
+    glBindVertexArray(g_cube_vao);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, g_map_block.gl_handle);
@@ -86,18 +99,26 @@ immediate_cube :: (model : Matrix4 = Matrix4_Identity) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    set_uniform(g_program, "diffuse_texture", int, 0);
-    set_uniform(g_program, "model", Matrix4, make_translation_matrix4(.{0, 0, -2}) * rotation_matrix(Matrix4, rot));
-    set_uniform(g_program, "viewproj", Matrix4, g_camera.view_proj);
+    // vertex uniform
+    // set_uniform(g_program, "model",             Matrix4, make_translation_matrix4(.{0, 0, -2}) * rotation_matrix(Matrix4, rot));
+    set_uniform(g_program, "model",             Matrix4, make_translation_matrix4(.{0, 0, -12}) * make_scale_matrix4(.{6, 6, 2}));
+    set_uniform(g_program, "viewproj",          Matrix4, g_camera.view_proj);
+
+    // fragment uniform
+    set_uniform(g_program, "diffuse_texture",   int,     0);
+    set_uniform(g_program, "view_position",     Vector3, g_camera.position);
+    set_uniform(g_program, "light_position",    Vector3, g_light_source);
+    set_uniform(g_program, "light_color",       Vector3, .{1.0, 1.0, 1.0});
 
     glDrawArrays(GL_TRIANGLES, 0, cast(u32) cube_vertices.count);
 }
 
 immediate_quad :: (model : Matrix4 = Matrix4_Identity) {
+    glUseProgram(g_program);
+
     glBindVertexArray(g_vao);
     glBindBuffer(GL_ARRAY_BUFFER, g_vbo);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_ibo);
-    glUseProgram(g_program);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, g_map_block.gl_handle);
@@ -122,32 +143,33 @@ set_uniform :: (program: GLuint, name: *u8, $T: Type, val : T) {
         #if T == {
             case Matrix4;   glUniformMatrix4fv(location, 1, GL_TRUE, *val._11);
             case Vector2;
+            case Vector3;   glUniform3f(location, val.x, val.y, val.z);
             case float;
             case int;       glUniform1i(location, cast(s32)val);
         }
     }
 }
 
-set_uniform_matrix4 :: (program : GLuint, name : *u8, m: Matrix4) {
-    loc := glGetUniformLocation(program, name);
-    if loc < 0   log_error("Unknown parameter: '%'\n", to_string(name));
-    if loc >= 0  glUniformMatrix4fv(loc, 1, GL_TRUE, *m._11);
-}
-
 VERT_SHADER :: #string GLSL
 #version 450 core
 
 layout (location = 0) in vec4 position;
-layout (location = 1) in vec2 uv;
+layout (location = 1) in vec3 normal;
+layout (location = 2) in vec2 uv;
 
 uniform mat4 model;
 uniform mat4 viewproj;
 
 out vec2 v_texcoord;
+out vec3 v_normal;
+out vec4 v_position;
 
 void main() {
     v_texcoord  = uv;
-    gl_Position = viewproj * model * position;
+    v_normal    = mat3(transpose(inverse(model))) * normal;
+    v_position  = vec4(model * position);
+
+    gl_Position = viewproj * v_position;
 }
 
 GLSL
@@ -155,71 +177,118 @@ GLSL
 FRAG_SHADER :: #string GLSL
 #version 450 core
 
+in vec4 v_position;
+in vec3 v_normal;
 in vec2 v_texcoord;
 
 out vec4 frag_color;
 
 uniform sampler2D diffuse_texture;
 
+uniform vec3 light_color;
+uniform vec3 view_position;
+uniform vec3 light_position;
+
 void main() {
-    frag_color = texture(diffuse_texture, v_texcoord);
+    float ambient_factor = 0.1;
+    vec3 ambient         = ambient_factor * light_color;
+
+    vec3 n = normalize(v_normal);
+    vec3 light_dir = normalize(light_position.xyz - v_position.xyz);
+
+    float diff = max(dot(n, light_dir), 0.0);
+    vec3 diffuse = diff * light_color;
+
+    float specular_factor = 0.5;
+    vec3 view_dir = normalize(view_position.xyz - v_position.xyz);
+    vec3 reflect_dir = reflect(-light_dir, n);
+    float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
+    vec3 specular = specular_factor * spec * light_color;
+
+    vec3 result = (ambient + diffuse + specular) * light_color;
+
+    frag_color = texture(diffuse_texture, v_texcoord) * vec4(result, 1.0);
 }
 
 GLSL
 
+LIGHT_VERT_SHADER :: #string GLSL
+#version 450 core
+
+layout (location = 0) in vec4 position;
+
+uniform mat4 model;
+uniform mat4 viewproj;
+
+void main() {
+    gl_Position = viewproj * model * position;
+}
+
+GLSL
+
+LIGHT_FRAG_SHADER :: #string GLSL
+#version 450 core
+
+out vec4 frag_color;
+
+void main() {
+    frag_color = vec4(1.0, 1.0, 1.0, 1.0);
+}
+GLSL;
+
 #scope_file
 
 vertices : [4]Vertex= .[
-    .{.{-0.5, -0.5, 0.0, 1.0}, .{0.0, 1.0}}, 
-    .{.{ 0.5, -0.5, 0.0, 1.0}, .{1.0, 1.0}}, 
-    .{.{ 0.5,  0.5, 0.0, 1.0}, .{1.0, 0.0}}, 
-    .{.{-0.5,  0.5, 0.0, 1.0}, .{0.0, 0.0}}, 
+    .{position=.{-0.5, -0.5, 0.0, 1.0}, uv=.{0.0, 1.0}}, 
+    .{position=.{ 0.5, -0.5, 0.0, 1.0}, uv=.{1.0, 1.0}}, 
+    .{position=.{ 0.5,  0.5, 0.0, 1.0}, uv=.{1.0, 0.0}}, 
+    .{position=.{-0.5,  0.5, 0.0, 1.0}, uv=.{0.0, 0.0}}, 
 ];
 
 indices  : [6]u32 = .[0, 1, 2, 0, 2, 3];
 
 cube_vertices : [36]Vertex = .[
-    .{.{-0.5, -0.5, -0.5, 1.0}, .{0.0, 0.0}},
-    .{.{ 0.5, -0.5, -0.5, 1.0}, .{1.0, 0.0}},
-    .{.{ 0.5,  0.5, -0.5, 1.0}, .{1.0, 1.0}},
-    .{.{ 0.5,  0.5, -0.5, 1.0}, .{1.0, 1.0}},
-    .{.{-0.5,  0.5, -0.5, 1.0}, .{0.0, 1.0}},
-    .{.{-0.5, -0.5, -0.5, 1.0}, .{0.0, 0.0}},
+    .{.{-0.5, -0.5, -0.5, 1.0}, .{ 0.0,  0.0, -1.0}, .{0.0, 0.0}},
+    .{.{ 0.5, -0.5, -0.5, 1.0}, .{ 0.0,  0.0, -1.0}, .{1.0, 0.0}},
+    .{.{ 0.5,  0.5, -0.5, 1.0}, .{ 0.0,  0.0, -1.0}, .{1.0, 1.0}},
+    .{.{ 0.5,  0.5, -0.5, 1.0}, .{ 0.0,  0.0, -1.0}, .{1.0, 1.0}},
+    .{.{-0.5,  0.5, -0.5, 1.0}, .{ 0.0,  0.0, -1.0}, .{0.0, 1.0}},
+    .{.{-0.5, -0.5, -0.5, 1.0}, .{ 0.0,  0.0, -1.0}, .{0.0, 0.0}},
 
-    .{.{-0.5, -0.5,  0.5, 1.0}, .{0.0, 0.0}},
-    .{.{ 0.5, -0.5,  0.5, 1.0}, .{1.0, 0.0}},
-    .{.{ 0.5,  0.5,  0.5, 1.0}, .{1.0, 1.0}},
-    .{.{ 0.5,  0.5,  0.5, 1.0}, .{1.0, 1.0}},
-    .{.{-0.5,  0.5,  0.5, 1.0}, .{0.0, 1.0}},
-    .{.{-0.5, -0.5,  0.5, 1.0}, .{0.0, 0.0}},
+    .{.{-0.5, -0.5,  0.5, 1.0}, .{ 0.0,  0.0,  1.0}, .{0.0, 0.0}},
+    .{.{ 0.5, -0.5,  0.5, 1.0}, .{ 0.0,  0.0,  1.0}, .{1.0, 0.0}},
+    .{.{ 0.5,  0.5,  0.5, 1.0}, .{ 0.0,  0.0,  1.0}, .{1.0, 1.0}},
+    .{.{ 0.5,  0.5,  0.5, 1.0}, .{ 0.0,  0.0,  1.0}, .{1.0, 1.0}},
+    .{.{-0.5,  0.5,  0.5, 1.0}, .{ 0.0,  0.0,  1.0}, .{0.0, 1.0}},
+    .{.{-0.5, -0.5,  0.5, 1.0}, .{ 0.0,  0.0,  1.0}, .{0.0, 0.0}},
 
-    .{.{-0.5,  0.5,  0.5, 1.0}, .{1.0, 0.0}},
-    .{.{-0.5,  0.5, -0.5, 1.0}, .{1.0, 1.0}},
-    .{.{-0.5, -0.5, -0.5, 1.0}, .{0.0, 1.0}},
-    .{.{-0.5, -0.5, -0.5, 1.0}, .{0.0, 1.0}},
-    .{.{-0.5, -0.5,  0.5, 1.0}, .{0.0, 0.0}},
-    .{.{-0.5,  0.5,  0.5, 1.0}, .{1.0, 0.0}},
+    .{.{-0.5,  0.5,  0.5, 1.0}, .{-1.0,  0.0,  0.0}, .{1.0, 0.0}},
+    .{.{-0.5,  0.5, -0.5, 1.0}, .{-1.0,  0.0,  0.0}, .{1.0, 1.0}},
+    .{.{-0.5, -0.5, -0.5, 1.0}, .{-1.0,  0.0,  0.0}, .{0.0, 1.0}},
+    .{.{-0.5, -0.5, -0.5, 1.0}, .{-1.0,  0.0,  0.0}, .{0.0, 1.0}},
+    .{.{-0.5, -0.5,  0.5, 1.0}, .{-1.0,  0.0,  0.0}, .{0.0, 0.0}},
+    .{.{-0.5,  0.5,  0.5, 1.0}, .{-1.0,  0.0,  0.0}, .{1.0, 0.0}},
 
-    .{.{ 0.5,  0.5,  0.5, 1.0}, .{1.0, 0.0}},
-    .{.{ 0.5,  0.5, -0.5, 1.0}, .{1.0, 1.0}},
-    .{.{ 0.5, -0.5, -0.5, 1.0}, .{0.0, 1.0}},
-    .{.{ 0.5, -0.5, -0.5, 1.0}, .{0.0, 1.0}},
-    .{.{ 0.5, -0.5,  0.5, 1.0}, .{0.0, 0.0}},
-    .{.{ 0.5,  0.5,  0.5, 1.0}, .{1.0, 0.0}},
+    .{.{ 0.5,  0.5,  0.5, 1.0}, .{ 1.0,  0.0,  0.0}, .{1.0, 0.0}},
+    .{.{ 0.5,  0.5, -0.5, 1.0}, .{ 1.0,  0.0,  0.0}, .{1.0, 1.0}},
+    .{.{ 0.5, -0.5, -0.5, 1.0}, .{ 1.0,  0.0,  0.0}, .{0.0, 1.0}},
+    .{.{ 0.5, -0.5, -0.5, 1.0}, .{ 1.0,  0.0,  0.0}, .{0.0, 1.0}},
+    .{.{ 0.5, -0.5,  0.5, 1.0}, .{ 1.0,  0.0,  0.0}, .{0.0, 0.0}},
+    .{.{ 0.5,  0.5,  0.5, 1.0}, .{ 1.0,  0.0,  0.0}, .{1.0, 0.0}},
 
-    .{.{-0.5, -0.5, -0.5, 1.0}, .{0.0, 1.0}},
-    .{.{ 0.5, -0.5, -0.5, 1.0}, .{1.0, 1.0}},
-    .{.{ 0.5, -0.5,  0.5, 1.0}, .{1.0, 0.0}},
-    .{.{ 0.5, -0.5,  0.5, 1.0}, .{1.0, 0.0}},
-    .{.{-0.5, -0.5,  0.5, 1.0}, .{0.0, 0.0}},
-    .{.{-0.5, -0.5, -0.5, 1.0}, .{0.0, 1.0}},
+    .{.{-0.5, -0.5, -0.5, 1.0}, .{ 0.0, -1.0,  0.0}, .{0.0, 1.0}},
+    .{.{ 0.5, -0.5, -0.5, 1.0}, .{ 0.0, -1.0,  0.0}, .{1.0, 1.0}},
+    .{.{ 0.5, -0.5,  0.5, 1.0}, .{ 0.0, -1.0,  0.0}, .{1.0, 0.0}},
+    .{.{ 0.5, -0.5,  0.5, 1.0}, .{ 0.0, -1.0,  0.0}, .{1.0, 0.0}},
+    .{.{-0.5, -0.5,  0.5, 1.0}, .{ 0.0, -1.0,  0.0}, .{0.0, 0.0}},
+    .{.{-0.5, -0.5, -0.5, 1.0}, .{ 0.0, -1.0,  0.0}, .{0.0, 1.0}},
 
-    .{.{-0.5,  0.5, -0.5, 1.0}, .{0.0, 1.0}},
-    .{.{ 0.5,  0.5, -0.5, 1.0}, .{1.0, 1.0}},
-    .{.{ 0.5,  0.5,  0.5, 1.0}, .{1.0, 0.0}},
-    .{.{ 0.5,  0.5,  0.5, 1.0}, .{1.0, 0.0}},
-    .{.{-0.5,  0.5,  0.5, 1.0}, .{0.0, 0.0}},
-    .{.{-0.5,  0.5, -0.5, 1.0}, .{0.0, 1.0}}
+    .{.{-0.5,  0.5, -0.5, 1.0}, .{ 0.0,  1.0,  0.0}, .{0.0, 1.0}},
+    .{.{ 0.5,  0.5, -0.5, 1.0}, .{ 0.0,  1.0,  0.0}, .{1.0, 1.0}},
+    .{.{ 0.5,  0.5,  0.5, 1.0}, .{ 0.0,  1.0,  0.0}, .{1.0, 0.0}},
+    .{.{ 0.5,  0.5,  0.5, 1.0}, .{ 0.0,  1.0,  0.0}, .{1.0, 0.0}},
+    .{.{-0.5,  0.5,  0.5, 1.0}, .{ 0.0,  1.0,  0.0}, .{0.0, 0.0}},
+    .{.{-0.5,  0.5, -0.5, 1.0}, .{ 0.0,  1.0,  0.0}, .{0.0, 1.0}}
 ];
 
 cube_indices : [36]u32 = .[

@@ -40,6 +40,10 @@ main :: () {
         glClearColor(.0, .0, .0, 1.);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        g_light_source.x = sin(cast(float32) seconds_since_init()) * 3.0;
+        g_light_source.x = cos(cast(float32) seconds_since_init()) * 3.0;
+
+        immediate_light(make_translation_matrix4(g_light_source));
         immediate_cube();
         // immediate_quad();
 
