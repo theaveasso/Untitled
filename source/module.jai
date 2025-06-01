@@ -1,3 +1,4 @@
+#load "assets.jai";
 #load "renderer.jai";
 #load "camera.jai";
 

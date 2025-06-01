@@ -3,6 +3,7 @@ g_camera : Camera;
 g_should_quit := false;
 
 g_font : *Simp.Dynamic_Font;
+g_map_block: Simp.Texture; // @Temp Block.png
 
 ASPECT  :: (16. / 9.);
 VPIXELS :: 720;
@@ -14,8 +15,8 @@ main :: () {
     g_window = create_window(width=g_window_width, height=g_window_height, window_name="Untitled", background_color_rgb=.[.0, .0, .0]);
     Simp.set_render_target(g_window);
 
-    glEnable(GL_CULL_FACE);
-    glLogicOp(GL_INVERT);
+    glEnable(GL_DEPTH_TEST);  
+    glFrontFace(GL_CCW);
 
     if !renderer\_init() exit(1);
     if !resources_init() exit(1);
@@ -35,24 +36,19 @@ main :: () {
         }
 
         flying_camera_update(0.00167);
-        Simp.clear_render_target(.0, .0, .0, 1.);
 
-        immediate_mesh();
+        glClearColor(.0, .0, .0, 1.);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        immediate_cube();
+        // immediate_quad();
 
         Simp.swap_buffers(g_window);
     }
 }
 
-font_init :: () {
-    pixel_height := g_window_height / 24;
-    g_font = Simp.get_font_at_size("resources/fonts", "DungeonFont.ttf", pixel_height);
-    assert(g_font != null);
-}
-
 resources_init :: () -> bool {
-    font_init();
-
-    return true;
+    return font_init() && texture_init();
 }
 
 is_key_down :: (key_code : Input.Key_Code) -> bool {
