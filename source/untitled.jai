@@ -11,12 +11,22 @@ VPIXELS :: 720;
 g_window_width  : s32 = xx (ASPECT * VPIXELS);
 g_window_height : s32 = xx VPIXELS;
 
+g_seed : u64;
+g_terrain : Terrain;
+
 main :: () {
+    g_seed = random_get();
     g_window = create_window(width=g_window_width, height=g_window_height, window_name="Untitled", background_color_rgb=.[.0, .0, .0]);
     Simp.set_render_target(g_window);
 
     glEnable(GL_DEPTH_TEST);  
-    glFrontFace(GL_CCW);
+
+    g_camera.position = xyz(1, 2.3, 4.3);
+    g_camera.euler_angles.x = -20 * PI / 180.0;
+    g_camera.euler_angles.y = 30 * PI / 180.0;
+
+    // terrain_save_to_file(filename=tprint("%/%", save_terrain_path, save_terrain_file), strategy=.Fault_Formation, rows=50, cols=50, iter=50);
+    terrain_load_from_file(*g_terrain, tprint("%/%", save_terrain_path, save_terrain_file));
 
     if !renderer\_init() exit(1);
     if !resources_init() exit(1);
@@ -40,12 +50,7 @@ main :: () {
         glClearColor(.0, .0, .0, 1.);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        g_light_source.x = sin(cast(float32) seconds_since_init()) * 3.0;
-        g_light_source.x = cos(cast(float32) seconds_since_init()) * 3.0;
-
-        immediate_light(make_translation_matrix4(g_light_source));
-        immediate_cube();
-        // immediate_quad();
+        terrain_triangle_list_draw(*g_terrain);
 
         Simp.swap_buffers(g_window);
     }

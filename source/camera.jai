@@ -1,5 +1,5 @@
 Camera :: struct {
-    FLY_SPEED           :: 0.2;
+    FLY_SPEED           :: 0.8;
     ROTATION_SPEED      :: 0.1;
     ROTATION_SMOOTHING  :: 0.3;
 
@@ -51,6 +51,6 @@ flying_camera_update :: (dt: float) {
 
     vx, vy, vw, vh := get_dimensions(g_window, false);
     aspect_ratio := vw / cast (float) vh;
-    projection  = make_projection_matrix(fov * PI / 180.0, aspect_ratio, 0.001, 1000.0);
+    projection  = make_projection_matrix(fov * PI / 180.0, aspect_ratio, 0.1, 10000.0);
     view_proj    = projection * view;
 }
