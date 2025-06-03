@@ -43,8 +43,6 @@ make_terrain_vertex :: (using terrain : *Terrain, x : int, z : int) -> Terrain.V
 terrain_save_to_file :: (filename : string, strategy : Terrain_Strategy = .Flat_Formation, _size: u32 = 10, iter : u32 = 10, roughness : float = 2.0, _min_height : float = -1, _max_height : float = 1) {
     using terrain : Terrain;
     size       = _size;
-    min_height = _min_height;
-    max_height = _max_height;
     terrain.data = NewArray(size * size, float);
 
     if strategy == {
@@ -53,7 +51,10 @@ terrain_save_to_file :: (filename : string, strategy : Terrain_Strategy = .Flat_
         case .Midpoint_Displacement; terrain_mp_displacement(*terrain, roughness);
     }
 
-    array_normalize(float, terrain.data, min_height, max_height);
+    for data { 
+        if it < min_height min_height = it; 
+        if it > max_height max_height = it; 
+    }
 
     file, success := file_open(filename, for_writing=true, keep_existing_content=false);
     if !success { log_error("Could not read terrain data %\n", filename); exit(1); };
@@ -162,10 +163,9 @@ void main() {
     gl_Position = viewproj * vec4(position, 1.0);
     world_pos = position;
 
-    float delta_height = max_height - min_height; 
-    float height_ratio = (position.y - min_height) / delta_height;
-    float color = height_ratio * 0.8 + 0.2;
-    v_color = vec4(color, color, 1.0, 1.0);
+    float height_ratio = (position.y - min_height) / (max_height - min_height);
+    height_ratio = clamp(height_ratio, 0.0, 1.0);
+    v_color = vec4(vec3(height_ratio), 1.0);
 }
 GLSL
 
@@ -173,6 +173,7 @@ TERRAIN_FRAGMENT_SHADER :: #string GLSL
 #version 450 core
 
 in vec4 v_color;
+in vec3 world_pos;
 
 out vec4 frag_color;
 

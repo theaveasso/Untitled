@@ -26,7 +26,7 @@ main :: () {
     g_camera.euler_angles.y = 30 * PI / 180.0;
 
     filename := tprint("%/%", save_terrain_path, save_terrain_file);
-    // terrain_save_to_file(filename=filename, strategy=.Midpoint_Displacement, _size=256, roughness=1.5, _min_height=0, _max_height=250);
+    terrain_save_to_file(filename=filename, strategy=.Midpoint_Displacement, _size=256, roughness=3, _min_height=0, _max_height=250);
     terrain_load_from_file(*g_terrain, filename);
 
     if !renderer\_init() exit(1);
