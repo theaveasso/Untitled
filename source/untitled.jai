@@ -3,7 +3,9 @@ g_camera : Camera;
 g_should_quit := false;
 
 g_font : *Simp.Dynamic_Font;
-g_map_block: Simp.Texture; // @Temp Block.png
+g_map_block : Simp.Texture; // @Temp Block.png
+g_skybox        : Skybox;
+
 
 ASPECT  :: (16. / 9.);
 VPIXELS :: 720;
@@ -26,7 +28,7 @@ main :: () {
     g_camera.euler_angles.y = 30 * PI / 180.0;
 
     filename := tprint("%/%", save_terrain_path, save_terrain_file);
-    terrain_save_to_file(filename=filename, strategy=.Midpoint_Displacement, _size=256, roughness=3, _min_height=0, _max_height=250);
+    terrain_save_to_file(filename=filename, strategy=.Midpoint_Displacement, _size=256, roughness=3, _min_height=0, _max_height=10);
     terrain_load_from_file(*g_terrain, filename);
 
     if !renderer\_init() exit(1);
@@ -52,6 +54,7 @@ main :: () {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         terrain_triangle_list_draw(*g_terrain);
+        immediate_skybox(*g_skybox);
 
         Simp.swap_buffers(g_window);
     }

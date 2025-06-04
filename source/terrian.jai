@@ -7,6 +7,7 @@ g_terrain_vao, g_terrain_vbo, g_terrain_ibo : GLuint;
 Terrain_Strategy :: enum u8 {
     Flat\   _Formation;
     Fault\  _Formation;
+    Perlin\ _Formation;
     Midpoint_Displacement;
 }
 
@@ -43,18 +44,22 @@ make_terrain_vertex :: (using terrain : *Terrain, x : int, z : int) -> Terrain.V
 terrain_save_to_file :: (filename : string, strategy : Terrain_Strategy = .Flat_Formation, _size: u32 = 10, iter : u32 = 10, roughness : float = 2.0, _min_height : float = -1, _max_height : float = 1) {
     using terrain : Terrain;
     size       = _size;
+    min_height = _min_height;
+    max_height = _max_height;
+
     terrain.data = NewArray(size * size, float);
 
     if strategy == {
-        case .Flat\_Formation;       terrain_flat\_formation(*terrain);
-        case .Fault_Formation;       terrain_fault_formation(*terrain, iter);
+        case .Flat\   _Formation;    terrain_flat\_formation(*terrain);
+        case .Fault\  _Formation;    terrain_fault_formation(*terrain, iter);
         case .Midpoint_Displacement; terrain_mp_displacement(*terrain, roughness);
+        case .Perlin\ _Formation;    terrain_perlin_noise(*terrain);
     }
 
-    for data { 
-        if it < min_height min_height = it; 
-        if it > max_height max_height = it; 
-    }
+    // for data { 
+    //     if it < min_height min_height = it; 
+    //     if it > max_height max_height = it; 
+    // }
 
     file, success := file_open(filename, for_writing=true, keep_existing_content=false);
     if !success { log_error("Could not read terrain data %\n", filename); exit(1); };
@@ -319,4 +324,41 @@ terrain_mp_displacement :: (using terrain : *Terrain, roughness : float) {
         current_height *= height_reduce;
     }
 
+}
+
+terrain_perlin_noise :: (using terrain : *Terrain) {
+    state : FNL_State;
+    state.noise_type = .Perlin;
+    state.frequency = 2;
+
+    frequency := 0.05;
+    noise_min, noise_max : float;
+    // Generate
+    for z : 0..size - 1 {
+        for x : 0..size - 1 {
+            index := z * size + x;
+
+            inv_size := 1.0 / cast(float)size;
+            world_x := cast(float) x / xx size * inv_size;
+            world_z := cast(float) ((z % size) * inv_size);
+            noise := get_noise_single_2d(*state, world_x, world_z);
+
+            data[index] = noise;
+
+            if noise < noise_min noise_min = noise;
+            if noise > noise_max noise_max = noise;
+        }
+    }
+
+    delta := noise_max - noise_min;
+    delta = ifx delta == 0.0 then 1.0 else delta;
+
+    range := max_height - min_height;
+
+    for i : 0..data.count - 1 {
+        norm := (data[i] - min_height) / delta;
+        data[i] = min_height + norm * range;
+    }
+
+    print("data %\n", data);
 }

@@ -1,8 +1,18 @@
 g_program, g_light_program  : GLuint;
+g_skybox_program : GLuint;
 
 g_vao, g_vbo, g_ibo                 : GLuint;
 g_cube_vao, g_cube_vbo, g_cube_ibo  : GLuint;
 g_light_vao, g_light_vbo            : GLuint;
+
+Skybox :: struct {
+    Vetex :: struct {
+        position : Vector3;
+    }
+
+    vao, vbo, ebo  : GLuint;
+    cubemap_handle : GLuint;
+}
 
 g_light_source := Vector3.{1.2, -2.0, 0.0};
 
@@ -81,6 +91,7 @@ renderer_init :: () -> bool {
     // glBindVertexArray(0);
 
     success = terrain_program_init(*g_terrain);
+    success = skybox\_program_init(*g_skybox);
 
     return success;
 }
@@ -93,6 +104,78 @@ terrain_program_init :: (terrain : *Terrain) -> bool {
     terrain_triangle_list_init(terrain);
 
     return success;
+}
+
+skybox_program_init :: (using skybox : *Skybox) -> bool {
+    success : bool;
+    success, g_skybox_program = create_shader_program(SKYBOX_VERTEX_SHADER, SKYBOX_FRAGMENT_SHADER);
+    if !success { log_error("Could not create skybox program"); return false; }
+
+    vertices : [8]Skybox.Vetex = .[
+        .{.{-1.0, -1.0,  1.0}},            //        7--------6
+        .{.{ 1.0, -1.0,  1.0}},            //       /|       /|
+        .{.{ 1.0, -1.0, -1.0}},            //      4--------5 |
+        .{.{-1.0, -1.0, -1.0}},            //      | |      | |
+        .{.{-1.0,  1.0,  1.0}},            //      | 3------|-2
+        .{.{ 1.0,  1.0,  1.0}},            //      |/       |/
+        .{.{ 1.0,  1.0, -1.0}},            //      0--------1
+        .{.{-1.0,  1.0, -1.0}},            //
+    ];
+
+    indices : [36]u32 = .[
+        1, 2, 6, 6, 5, 1, // Right
+        0, 4, 7, 7, 3, 0, // Left
+        4, 5, 6, 6, 7, 4, // Top	
+	    0, 3, 2, 2, 1, 0, // Bottom
+	    0, 1, 5, 5, 4, 0, // Back
+	    3, 7, 6, 6, 2, 3, // Front
+    ];
+
+    glGenVertexArrays(1, *vao);
+    glGenBuffers(1, *vbo);
+    glGenBuffers(1, *ebo);
+
+    glBindVertexArray(vao);
+    defer glBindVertexArray(0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, size_of(Skybox.Vetex) * vertices.count, vertices.data, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, size_of(u32) * indices.count, indices.data, GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, size_of(Skybox.Vetex), cast(*void)0);
+
+    glUseProgram(g_skybox_program);
+    set_uniform(g_skybox_program, "skybox", int, cubemap_handle);
+    glUseProgram(0);
+
+    return success;
+}
+
+immediate_skybox :: (using skybox : *Skybox) {
+    old_cull_face_mode, old_depth_func_mode : GLint;
+    glGetIntegerv(GL_CULL_FACE_MODE, *old_cull_face_mode);
+    glGetIntegerv(GL_DEPTH_FUNC,     *old_depth_func_mode);
+
+    glCullFace(GL_FRONT);
+    glDepthFunc(GL_LEQUAL);
+
+    glUseProgram(g_skybox_program);
+    glBindVertexArray(vao);
+    defer glBindVertexArray(0);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, cubemap_handle);
+
+    view := make_matrix4(make_matrix3(g_camera.view));
+    set_uniform(g_skybox_program, "viewproj", Matrix4, g_camera.projection * view);
+
+    glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, null);
+
+    glCullFace(xx old_cull_face_mode);
+    glDepthFunc(xx old_depth_func_mode);
 }
 
 immediate_light :: (model : Matrix4 = Matrix4_Identity) {
@@ -177,6 +260,37 @@ set_uniform :: (program: GLuint, name: *u8, $T: Type, val : T) {
         }
     }
 }
+
+SKYBOX_VERTEX_SHADER   :: #string GLSL 
+#version 330 core
+
+layout (location = 0) in vec3 position;
+
+out vec3 v_texcoord;
+
+uniform mat4 viewproj;
+
+void main() {
+    vec4 pos = viewproj * vec4(position, 1.0);
+    gl_Position = pos.xyww;
+    v_texcoord  = position;
+}
+GLSL
+
+SKYBOX_FRAGMENT_SHADER :: #string GLSL 
+#version 330 core
+
+in  vec3 v_texcoord;
+
+out vec4 frag_color;
+
+uniform samplerCube skybox;
+
+void main() {
+    frag_color = texture(skybox, v_texcoord);
+}
+
+GLSL
 
 VERT_SHADER :: #string GLSL
 #version 450 core
