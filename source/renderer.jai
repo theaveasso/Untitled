@@ -32,66 +32,10 @@ Material :: struct {
 
 renderer_init :: () -> bool {
     success : bool;
-    // success, g_program = create_shader_program(VERT_SHADER, FRAG_SHADER);
-    // if !success return false;
-
-    // success, g_light_program = create_shader_program(LIGHT_VERT_SHADER, LIGHT_FRAG_SHADER);
-    // if !success return false;
-
-    // glGenVertexArrays(1, *g_vao);
-    // glBindVertexArray(g_vao);
-
-    // glGenBuffers(1, *g_vbo);
-    // glBindBuffer(GL_ARRAY_BUFFER, g_vbo);
-    // glBufferData(GL_ARRAY_BUFFER, size_of(Vertex) * vertices.count, vertices.data, GL_STATIC_DRAW);
-
-    // glGenBuffers(1, *g_ibo);
-    // glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_ibo);
-    // glBufferData(GL_ELEMENT_ARRAY_BUFFER, size_of(u32) * indices.count, indices.data, GL_STATIC_DRAW);
-
-    // glEnableVertexAttribArray(0);
-    // glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, size_of(Vertex), cast(*void)0);
-    // glEnableVertexAttribArray(1);
-    // glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, size_of(Vertex), cast(*void)size_of(Vector4));
-    // glEnableVertexAttribArray(2);
-    // glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, size_of(Vertex), cast(*void)(size_of(Vector4) + size_of(Vector3)));
-
-    // glBindBuffer(GL_ARRAY_BUFFER, 0);
-    // glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-    // glBindVertexArray(0);
-
-    // glGenVertexArrays(1, *g_cube_vao);
-    // glBindVertexArray(g_cube_vao);
-
-    // glGenBuffers(1, *g_cube_vbo);
-    // glBindBuffer(GL_ARRAY_BUFFER, g_cube_vbo);
-    // glBufferData(GL_ARRAY_BUFFER, size_of(Vertex) * cube_vertices.count, cube_vertices.data, GL_STATIC_DRAW);
-
-    // glEnableVertexAttribArray(0);
-    // glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, size_of(Vertex), cast(*void)0);
-    // glEnableVertexAttribArray(1);
-    // glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, size_of(Vertex), cast(*void)size_of(Vector4));
-    // glEnableVertexAttribArray(2);
-    // glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, size_of(Vertex), cast(*void)(size_of(Vector4) + size_of(Vector3)));
-
-    // glBindBuffer(GL_ARRAY_BUFFER, 0);
-    // glBindVertexArray(0);
-
-    // glGenVertexArrays(1, *g_light_vao);
-    // glBindVertexArray(g_light_vao);
-
-    // glGenBuffers(1, *g_light_vbo);
-    // glBindBuffer(GL_ARRAY_BUFFER, g_light_vbo);
-    // glBufferData(GL_ARRAY_BUFFER, size_of(Vertex) * cube_vertices.count, cube_vertices.data, GL_STATIC_DRAW);
-
-    // glEnableVertexAttribArray(0);
-    // glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, size_of(Vertex), cast(*void)0);
-
-    // glBindBuffer(GL_ARRAY_BUFFER, 0);
-    // glBindVertexArray(0);
 
     success = terrain_program_init(*g_terrain);
     success = skybox\_program_init(*g_skybox);
+    success = voxel\ _program_init(*g_voxel);
 
     return success;
 }
@@ -154,6 +98,50 @@ skybox_program_init :: (using skybox : *Skybox) -> bool {
     return success;
 }
 
+voxel_program_init :: (using voxel : *Voxel) -> bool {
+    success : bool;
+    success, program = create_shader_program(VOXEL_VERTEX_SHADER, VOXEL_FRAGMENT_SHADER);
+    if !success { log_error("Could not create voxel program"); return false; }
+
+    vertices : [8]Voxel.Vetex = .[
+        .{.{-1.0, -1.0,  1.0}},            //        7--------6
+        .{.{ 1.0, -1.0,  1.0}},            //       /|       /|
+        .{.{ 1.0, -1.0, -1.0}},            //      4--------5 |
+        .{.{-1.0, -1.0, -1.0}},            //      | |      | |
+        .{.{-1.0,  1.0,  1.0}},            //      | 3------|-2
+        .{.{ 1.0,  1.0,  1.0}},            //      |/       |/
+        .{.{ 1.0,  1.0, -1.0}},            //      0--------1
+        .{.{-1.0,  1.0, -1.0}},            //
+    ];
+
+    indices : [36]u32 = .[
+        1, 2, 6, 6, 5, 1, // Right
+        0, 4, 7, 7, 3, 0, // Left
+        4, 5, 6, 6, 7, 4, // Top	
+	    0, 3, 2, 2, 1, 0, // Bottom
+	    0, 1, 5, 5, 4, 0, // Back
+	    3, 7, 6, 6, 2, 3, // Front
+    ];
+
+    glGenVertexArrays(1, *vao);
+    glGenBuffers(1, *vbo);
+    glGenBuffers(1, *ebo);
+
+    glBindVertexArray(vao);
+    defer glBindVertexArray(0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, size_of(Voxel.Vetex) * vertices.count, vertices.data, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, size_of(u32) * indices.count, indices.data, GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, size_of(Voxel.Vetex), cast(*void)0);
+
+    return success;
+}
+
 immediate_skybox :: (using skybox : *Skybox) {
     old_cull_face_mode, old_depth_func_mode : GLint;
     glGetIntegerv(GL_CULL_FACE_MODE, *old_cull_face_mode);
@@ -189,38 +177,14 @@ immediate_light :: (model : Matrix4 = Matrix4_Identity) {
     glBindVertexArray(0);
 }
 
-immediate_cube :: (model : Matrix4 = Matrix4_Identity) {
-    glUseProgram(g_program);
+immediate_cube :: (using voxel : *Voxel, model : Matrix4 = Matrix4_Identity) {
+    glUseProgram(program);
+    glBindVertexArray(vao);
 
-    glBindVertexArray(g_cube_vao);
+    set_uniform(program, "model",    Matrix4, model);
+    set_uniform(program, "viewproj", Matrix4, g_camera.view_proj);
 
-    // glActiveTexture(GL_TEXTURE0);
-    // glBindTexture(GL_TEXTURE_2D, g_map_block.gl_handle);
-
-    rot : Quaternion;
-    set_from_axis_and_angle(*rot, 0.5, 1, 0, xx (seconds_since_init() * 55 * PI / 180.));
-
-    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    // vertex uniform
-    // set_uniform(g_program, "model",             Matrix4, make_translation_matrix4(.{0, 0, -2}) * rotation_matrix(Matrix4, rot));
-    set_uniform(g_program, "model",             Matrix4, make_translation_matrix4(.{0, 0, -12}) * make_scale_matrix4(.{2, 2, 2}));
-    set_uniform(g_program, "viewproj",          Matrix4, g_camera.view_proj);
-
-    // fragment uniform
-    // set_uniform(g_program, "diffuse_texture",   int,     0);
-    set_uniform(g_program, "view_position",     Vector3, g_camera.position);
-    set_uniform(g_program, "light_position",    Vector3, g_light_source);
-    set_uniform(g_program, "light_color",       Vector3, .{1.0, 1.0, 1.0});
-
-    set_uniform(g_program, "material.ambient",  Vector3, .{0.25, 0.20725, 0.20725});
-    set_uniform(g_program, "material.diffuse",  Vector3, .{1.0, 0.829, 0.829});
-    set_uniform(g_program, "material.specular", Vector3, .{0.296648, 0.296648, 0.296648});
-    set_uniform(g_program, "material.shininess",float,   0.088 * 128.0);
-
-    glDrawArrays(GL_TRIANGLES, 0, cast(u32) cube_vertices.count);
-
+    glDrawElements(GL_TRIANGLES, 32, GL_UNSIGNED_INT, null);
     glBindVertexArray(0);
 }
 

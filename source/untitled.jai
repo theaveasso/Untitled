@@ -4,7 +4,9 @@ g_should_quit := false;
 
 g_font : *Simp.Dynamic_Font;
 g_map_block : Simp.Texture; // @Temp Block.png
-g_skybox        : Skybox;
+
+g_skybox : Skybox;
+g_voxel  : Voxel;
 
 
 ASPECT  :: (16. / 9.);
@@ -34,6 +36,8 @@ main :: () {
     if !renderer\_init() exit(1);
     if !resources_init() exit(1);
 
+    gap := 2.0;
+
     while !g_should_quit {
         reset_temporary_storage();
 
@@ -53,7 +57,8 @@ main :: () {
         glClearColor(.0, .0, .0, 1.);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        terrain_triangle_list_draw(*g_terrain);
+        // terrain_triangle_list_draw(*g_terrain);
+        immediate_cube(*g_voxel);
         immediate_skybox(*g_skybox);
 
         Simp.swap_buffers(g_window);

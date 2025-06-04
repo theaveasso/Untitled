@@ -3,6 +3,7 @@
 #load "camera.jai";
 #load "terrian.jai";
 #load "fastnoise.jai";
+#load "voxel.jai";
 
 #import "Basic";
 #import "GL";
