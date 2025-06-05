@@ -328,7 +328,7 @@ terrain_mp_displacement :: (using terrain : *Terrain, roughness : float) {
 
 terrain_perlin_noise :: (using terrain : *Terrain) {
     state : FNL_State;
-    state.noise_type = .Perlin;
+    state.noise_type = .Noise_Type_Perlin;
     state.frequency = 2;
 
     frequency := 0.05;
@@ -341,12 +341,12 @@ terrain_perlin_noise :: (using terrain : *Terrain) {
             inv_size := 1.0 / cast(float)size;
             world_x := cast(float) x / xx size * inv_size;
             world_z := cast(float) ((z % size) * inv_size);
-            noise := get_noise_single_2d(*state, world_x, world_z);
+            // noise := get_noise_single_2d(*state, world_x, world_z);
 
-            data[index] = noise;
+            // data[index] = noise;
 
-            if noise < noise_min noise_min = noise;
-            if noise > noise_max noise_max = noise;
+            // if noise < noise_min noise_min = noise;
+            // if noise > noise_max noise_max = noise;
         }
     }
 

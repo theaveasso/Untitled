@@ -32,6 +32,7 @@ main :: () {
     filename := tprint("%/%", save_terrain_path, save_terrain_file);
     terrain_save_to_file(filename=filename, strategy=.Midpoint_Displacement, _size=256, roughness=3, _min_height=0, _max_height=10);
     terrain_load_from_file(*g_terrain, filename);
+    make_world();
 
     if !renderer\_init() exit(1);
     if !resources_init() exit(1);

@@ -1,29 +1,50 @@
 FNL_State :: struct {
-    seed        : s32 = 42;
-    frequency   : float; 
-    octaves     : int;
-    noise_type  : FNL_Noise_Type;
+    seed                : s32   = 42;
+    frequency           : float = 0.01; 
+    octaves             : int   = 3;
+    lacunarity          : float = 2.0;
+    gain                : float = 0.5;
+    weighted_strength   : float = 0.0;
+    noise_type          : FNL_Noise_Type;
+    fractal_type        : FNL_Fractal_Type;
 }
 
 FNL_Noise_Type :: enum u8 {
-    Perlin;
+    Noise_Type_Perlin;
 }
 
-get_noise_single_2d :: (using fnl_state : *FNL_State, x : float, y : float) -> float {
+FNL_Fractal_Type :: enum u8 {
+    Fractal_Type_FBM;
+}
+
+// 2D noise at given position using the state settings
+// @returns Noise output bounded between -1 and 1.
+get_noise_2d :: (using fnl_state : *FNL_State, x : float, y : float) -> float {
+    transform_noise_coordinate_2d(fnl_state, *x, *y);
+    if fractal_type == {
+        case .Fractal_Type_FBM; return gen_fractal_fbm_2d(fnl_state, x, y);
+        case;                   return gen_noise_single_2d(fnl_state, seed, x, y);
+    } 
+}
+
+gen_noise_single_2d :: (using fnl_state : *FNL_State, next_seed : s32, x : float, y : float) -> float {
     transform_noise_coordinate_2d(fnl_state, *x, *y);
 
     if noise_type == {
-        case .Perlin; return single_perlin_2d(seed, x, y);
+        case .Noise_Type_Perlin; return single_perlin_2d(next_seed, x, y);
         case; return 0;
     }
 }
 
 #scope_file
+
 PRIME_X :: 501125321;
 PRIME_Y :: 1136930381;
 PRIME_Z :: 1720413743;
 
 // Utilities
+fast_min        :: inline (x : float, y : float) -> float { return ifx x < y then x else y; }
+fast_abs        :: inline (f : float) -> float { return ifx f < 0 then -f else f; }
 fast_floor      :: inline (f : float) -> int { return ifx f >= 0 then cast(int) f else cast(int) f - 1; }
 interp_quintic  :: inline (t :float) -> float { return t * t * t * (t * (t * 6 - 15) + 10); }
 
@@ -34,6 +55,19 @@ transform_noise_coordinate_2d :: (using fnl_state : FNL_State, x : *float, y : *
 
 hash_2d         :: inline (seed : int, x : int, y : int) -> int { hash := seed ^ x ^ y; hash *= 0x27d4eb2d; return hash; } 
 grad_coord_2d   :: inline (seed : int, x : int, y : int, xd : float, yd : float) -> float { hash := hash_2d(seed, x, y); hash ^= hash >> 15; hash &= 127 << 1; return xd * xx GRADIENTS_2D[hash] + yd * xx GRADIENTS_2D[hash | 1]; }
+
+calculate_fractal_bounding :: (fnl_state : *FNL_State) -> float {
+    gain := fast_abs(fnl_state.gain);
+    amp  := gain;
+    amp_fractal := 1.0;
+
+    for 1..fnl_state.octaves {
+        amp_fractal += amp;
+        amp *= gain;
+    }
+
+    return 1.0 / amp_fractal;
+}
 
 // Perlin Noise
 single_perlin_2d :: (seed : s32, x : float, y : float) -> float {
@@ -57,6 +91,25 @@ single_perlin_2d :: (seed : s32, x : float, y : float) -> float {
     xf1 := lerp(grad_coord_2d(seed, xx x0, xx y1, xd0, yd1), grad_coord_2d(seed, xx x1, xx y1, xd1, yd1), xs);
 
     return lerp(xf0, xf1, ys) * 1.4247691;
+}
+
+// Fractal FBm
+gen_fractal_fbm_2d :: (using state : *FNL_State, x : float, y : float) -> float {
+    sum := 0.0;
+    amp := calculate_fractal_bounding(state);
+
+    for 1..octaves {
+        _seed := seed + 1;
+        noise := gen_noise_single_2d(state, seed, x, y);
+        sum += xx (noise * amp);
+        amp *= lerp(1.0, fast_min(noise + 1, 2) * 0.5, weighted_strength);
+
+        x *= lacunarity;
+        y *= lacunarity;
+        amp *= state.gain;
+    }
+
+    return sum;
 }
 
 GRADIENTS_2D : [256]float64 = 
