@@ -11,7 +11,7 @@ font_init :: () -> bool {
 
 texture_init :: () -> bool {
     success : bool;
-    success = Simp.texture_load_from_file(map=*g_map_block, filename="resources/assets/BrickWall_BaseColor.jpg", build_mipmaps=false);
+    success = Simp.texture_load_from_file(map=*g_map_block, filename="resources/assets/Block.png", build_mipmaps=false);
 
     skybox_paths : [6]string = .[
         "resources/assets/skybox/SB_Stylished_01/px.png",

@@ -5,9 +5,11 @@ g_should_quit := false;
 g_font : *Simp.Dynamic_Font;
 g_map_block : Simp.Texture; // @Temp Block.png
 
+g_world  : World;
 g_skybox : Skybox;
 g_voxel  : Voxel;
 
+g_drawmode : GLenum = GL_TRIANGLES;
 
 ASPECT  :: (16. / 9.);
 VPIXELS :: 720;
@@ -32,12 +34,14 @@ main :: () {
     filename := tprint("%/%", save_terrain_path, save_terrain_file);
     terrain_save_to_file(filename=filename, strategy=.Midpoint_Displacement, _size=256, roughness=3, _min_height=0, _max_height=10);
     terrain_load_from_file(*g_terrain, filename);
-    make_world();
+
+    ok : bool;
+    block_specification_init();     // Initial Block Specifiaction (Block texture, Block normal)
+    ok, g_world = make_world();         // Create world state and create chunk at camera position
+    if !ok { log_error("Could not create game world\n"); exit(1); }; 
 
     if !renderer\_init() exit(1);
     if !resources_init() exit(1);
-
-    gap := 2.0;
 
     while !g_should_quit {
         reset_temporary_storage();
@@ -47,8 +51,9 @@ main :: () {
             if it.type == {
                 case .QUIT; g_should_quit = true;
                 case .KEYBOARD;
+                    if is_key_down(.ESCAPE) g_should_quit = true;
                     if it.key_code == {
-                        case .ESCAPE; if it.key_pressed g_should_quit = true;
+                        case #char "T"; if it.key_pressed g_drawmode = ifx g_drawmode==GL_TRIANGLES then cast (GLenum) GL_LINES else cast (GLenum) GL_TRIANGLES;
                     }
             }
         }
@@ -59,7 +64,8 @@ main :: () {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // terrain_triangle_list_draw(*g_terrain);
-        immediate_cube(*g_voxel);
+        // immediate_cube(*g_voxel);
+        immediate_chunk(*g_world);
         immediate_skybox(*g_skybox);
 
         Simp.swap_buffers(g_window);
