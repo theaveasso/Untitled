@@ -2,7 +2,6 @@
 #load "renderer.jai";
 #load "camera.jai";
 #load "terrian.jai";
-#load "fastnoise.jai";
 #load "voxel.jai";
 #load "world.jai";
 
