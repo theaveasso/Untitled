@@ -1,83 +1,79 @@
-g_window : Window_Type;
-g_camera : Camera;
-g_should_quit := false;
+g_window   : *SDL_Window;
+g_renderer : *SDL_Renderer;
 
-g_font : *Simp.Dynamic_Font;
-g_map_block : Simp.Texture; // @Temp Block.png
-
-g_world  : World;
-g_skybox : Skybox;
-g_voxel  : Voxel;
-
-g_drawmode : GLenum = GL_TRIANGLES;
-
-ASPECT  :: (16. / 9.);
-VPIXELS :: 720;
+ASPECT :: (1920.0 / 1080.0);
+VPIXELS :: 1080;
 
 g_window_width  : s32 = xx (ASPECT * VPIXELS);
 g_window_height : s32 = xx VPIXELS;
 
-g_seed : u64;
-g_terrain : Terrain;
+g_should_quit := false;
 
 main :: () {
-    g_seed = random_get();
-    g_window = create_window(width=g_window_width, height=g_window_height, window_name="Untitled", background_color_rgb=.[.0, .0, .0]);
-    Simp.set_render_target(g_window);
+    if !SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) { 
+        log_error("Failed to call SDL_Init: %", to_string(SDL_GetError())); 
+        return;
+    }
 
-    glEnable(GL_DEPTH_TEST);  
+    SDL_GL_SetAttribute(.SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+    SDL_GL_SetAttribute(.SDL_GL_CONTEXT_MINOR_VERSION, 6);
+    SDL_GL_SetAttribute(.SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
-    g_camera.position = xyz(1, 2.3, 4.3);
-    g_camera.euler_angles.x = -20 * PI / 180.0;
-    g_camera.euler_angles.y = 30 * PI / 180.0;
+    g_window = SDL_CreateWindow("Untitled", g_window_width, g_window_height, SDL_WINDOW_OPENGL);
+    if g_window == null {
+        log_error("Could not create SDL_Window: %", to_string(SDL_GetError()));
+        return;
+    }
 
-    filename := tprint("%/%", save_terrain_path, save_terrain_file);
-    terrain_save_to_file(filename=filename, strategy=.Midpoint_Displacement, _size=256, roughness=3, _min_height=0, _max_height=10);
-    terrain_load_from_file(*g_terrain, filename);
+    gl_context := SDL_GL_CreateContext(g_window);
+    if gl_context == null {
+        log_error("Could not create OpenGL Context: %", to_string(SDL_GetError())); 
+        return;
+    }
 
-    ok : bool;
-    block_specification_init();     // Initial Block Specifiaction (Block texture, Block normal)
-    ok, g_world = make_world();         // Create world state and create chunk at camera position
-    if !ok { log_error("Could not create game world\n"); exit(1); }; 
+    SDL_GL_MakeCurrent(g_window, gl_context);
 
-    if !renderer\_init() exit(1);
-    if !resources_init() exit(1);
+    gl_load(*gl, SDL_GL_GetProcAddress);
+
+    g_triangle_program.gl_handle = create_shader_program(SHADER.TRIANGLE_SHADER);
+    glGenVertexArrays(1, *g_vao);
+
+    print ("GL Vendor = %\n", to_string(glGetString(GL_VENDOR)));
+    print ("GL Version = %\n", to_string(glGetString(GL_VERSION)));
 
     while !g_should_quit {
-        reset_temporary_storage();
+        event: SDL_Event;
+        while(SDL_PollEvent(*event)) {
+            if event.type == {
+                case xx SDL_EventType.QUIT;
+                    g_should_quit = true;
 
-        Input.update_window_events();
-        for Input.events_this_frame {
-            if it.type == {
-                case .QUIT; g_should_quit = true;
-                case .KEYBOARD;
-                    if is_key_down(.ESCAPE) g_should_quit = true;
-                    if it.key_code == {
-                        case #char "T"; if it.key_pressed g_drawmode = ifx g_drawmode==GL_TRIANGLES then cast (GLenum) GL_LINES else cast (GLenum) GL_TRIANGLES;
-                    }
+                case xx SDL_EventType.KEY_DOWN;
+                    if event.key.key == SDLK_ESCAPE
+                        g_should_quit = true;
+                case;
             }
         }
 
-        flying_camera_update(0.00167);
+        glViewport(0, 0, xx g_window_width, xx g_window_height);
+        glClear(GL_COLOR_BUFFER_BIT);
 
-        glClearColor(.0, .0, .0, 1.);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glUseProgram(g_triangle_program.gl_handle);
+        glBindVertexArray(g_vao);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
 
-        // terrain_triangle_list_draw(*g_terrain);
-        // immediate_cube(*g_voxel);
-        immediate_chunk(*g_world);
-        immediate_skybox(*g_skybox);
-
-        Simp.swap_buffers(g_window);
+        SDL_GL_SwapWindow(g_window);
     }
+
+    SDL_DestroyWindow(g_window);
+    SDL_Quit();
 }
 
-resources_init :: () -> bool {
-    return font_init() && texture_init();
-}
+#import, dir "../vendor/SDL3";
+#import "Basic";
+#import "String";
+#import "GL";
 
-is_key_down :: (key_code : Input.Key_Code) -> bool {
-    return (Input.input_button_states[cast (s64) key_code] & .DOWN) != 0;
-}
+#load "gl.jai";
 
-#load "module.jai";
+SHADER :: #import, dir "shader";
