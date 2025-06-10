@@ -1,0 +1,3 @@
+[submodule "vendor/NotSimp"]
+	path = vendor/NotSimp
+	url = https://github.com/theaveasso/NotSimp.git
