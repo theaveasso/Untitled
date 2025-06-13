@@ -1,5 +1,33 @@
-Shader_Program :: struct {
-    gl_handle : GLuint;
+
+Shader_Program :: struct ($T: Type) {
+    gl_handle   : GLuint;
+    uniforms    : T;
+}
+
+Triangle_List :: struct {
+    vao, vbo, ibo : GLuint;
+    primitive : GLenum = GL_TRIANGLES;
+
+    Vertex :: struct {
+        position : Vector3;
+        uv       : Vector2;
+    }
+
+    vertices_count :s64;
+    indices\_count :s64;
+}
+
+glrenderer_init :: (window : Window_Type) -> bool {
+    glEnable(GL_DEPTH_TEST);
+
+    NSimp.set_render_target(window);
+
+    major, minor : GLint;
+    glGetIntegerv(GL_MAJOR_VERSION, *major);
+    glGetIntegerv(GL_MINOR_VERSION, *minor);
+    log("OpenGL version %.%", major, minor, flags=.VERBOSE_ONLY);
+
+    return true;
 }
 
 create_shader_program :: (shader_text: string) -> GLuint {
@@ -8,7 +36,6 @@ create_shader_program :: (shader_text: string) -> GLuint {
     make_shader_object :: (shader: string, prefix: string, shader_type : GLenum) -> GLuint {
         shader_object := glCreateShader(shader_type);
 
-        //shader_str := temp_c_string(shader);
         shaders: [2] *u8;
         lengths: [2] s32;
 
@@ -70,5 +97,23 @@ create_shader_program :: (shader_text: string) -> GLuint {
     return shader_p;
 }
 
-g_triangle_program : Shader_Program;
-g_vao : GLuint;
+glattrib_set  :: inline (index: GLuint, size: GLint, type: GLenum, normalized: GLboolean, stride: GLsizei, pointer: *void) {
+    glEnableVertexAttribArray(index);
+    glVertexAttribPointer(index, size, type, normalized, stride, pointer);
+}
+
+gluniform_set :: inline ($T: Type, loc: GLint, value: T) {
+    #if T == {
+        case Matrix4;   glUniformMatrix4fv(loc, 1, GL_TRUE, *value._11);
+        case Vector3;   glUniform3f(loc, value.x, value.y, value.z);
+        case int;       glUniform1i(loc, cast(s32)value);
+        case float;     glUniform1f(loc, xx value);
+    }
+}
+
+gluniform_loc :: inline (program: GLuint, name: *u8) -> GLint {
+    loc := glGetUniformLocation(program, name);
+    if loc < 0 log("Unknown shader uniform: '%'", to_string(name), flags=.ERROR);
+
+    return xx loc;
+}

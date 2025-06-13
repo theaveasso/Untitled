@@ -1,5 +1,5 @@
-g_window   : *SDL_Window;
-g_renderer : *SDL_Renderer;
+g_window   : Window_Type;
+g_camera   : Camera;
 
 ASPECT :: (1920.0 / 1080.0);
 VPIXELS :: 1080;
@@ -8,72 +8,76 @@ g_window_width  : s32 = xx (ASPECT * VPIXELS);
 g_window_height : s32 = xx VPIXELS;
 
 g_should_quit := false;
+WANTED_MSAA :: 8;
 
 main :: () {
-    if !SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) { 
-        log_error("Failed to call SDL_Init: %", to_string(SDL_GetError())); 
-        return;
-    }
+    g_window = create_window(g_window_width, g_window_height, "Untitled", wanted_msaa=WANTED_MSAA);
+    ok_or_exit(g_window != null, "Could not create window");
 
-    SDL_GL_SetAttribute(.SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-    SDL_GL_SetAttribute(.SDL_GL_CONTEXT_MINOR_VERSION, 6);
-    SDL_GL_SetAttribute(.SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    msaa := NSimp.prepare_window(g_window, wanted_msaa = WANTED_MSAA);
+    log("Wanted MSAA: %\nChosen MSAA: %", WANTED_MSAA, msaa);
 
-    g_window = SDL_CreateWindow("Untitled", g_window_width, g_window_height, SDL_WINDOW_OPENGL);
-    if g_window == null {
-        log_error("Could not create SDL_Window: %", to_string(SDL_GetError()));
-        return;
-    }
+    success : bool;
+    success = glrenderer_init(g_window);
+    ok_or_exit(success, "Could not initialize OpenGL context"); 
 
-    gl_context := SDL_GL_CreateContext(g_window);
-    if gl_context == null {
-        log_error("Could not create OpenGL Context: %", to_string(SDL_GetError())); 
-        return;
-    }
+    g_camera.position = xyz(-60, 120, -40);
+    g_camera.euler_angles.x = 125 * PI / 180.0;
+    g_camera.euler_angles.y = -50 * PI / 180.0;
 
-    SDL_GL_MakeCurrent(g_window, gl_context);
-
-    gl_load(*gl, SDL_GL_GetProcAddress);
-
-    g_triangle_program.gl_handle = create_shader_program(SHADER.TRIANGLE_SHADER);
-    glGenVertexArrays(1, *g_vao);
-
-    print ("GL Vendor = %\n", to_string(glGetString(GL_VENDOR)));
-    print ("GL Version = %\n", to_string(glGetString(GL_VERSION)));
+    noise: FNL_State;
+    terrain := terrain_init(4, 128, 0, 70, *noise);
 
     while !g_should_quit {
-        event: SDL_Event;
-        while(SDL_PollEvent(*event)) {
-            if event.type == {
-                case xx SDL_EventType.QUIT;
-                    g_should_quit = true;
-
-                case xx SDL_EventType.KEY_DOWN;
-                    if event.key.key == SDLK_ESCAPE
-                        g_should_quit = true;
-                case;
+        reset_temporary_storage();
+        Input.update_window_events();
+        for Input.events_this_frame {
+            if it.type == {
+                case .QUIT; g_should_quit = true;
+                case .KEYBOARD;
+                    if is_key_down(.ESCAPE) g_should_quit = true;
             }
         }
 
+        flying_camera_update(*g_camera, 0.1667);
+
         glViewport(0, 0, xx g_window_width, xx g_window_height);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClearColor(.0, .0, .0, 1.);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glUseProgram(g_triangle_program.gl_handle);
-        glBindVertexArray(g_vao);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
-
-        SDL_GL_SwapWindow(g_window);
+        terrain_draw(*terrain);
+        NSimp.swap_buffers(g_window);
     }
-
-    SDL_DestroyWindow(g_window);
-    SDL_Quit();
 }
 
-#import, dir "../vendor/SDL3";
+#import, dir "../vendor/FastNoiseLite";
+NSimp :: #import, dir "../vendor/NotSimp";
+
 #import "Basic";
 #import "String";
 #import "GL";
+#import "Math";
+#import "Window_Creation";
+#import "stb_image";
+#import "Bucket_Array";
 
 #load "gl.jai";
+#load "terrain.jai";
+#load "camera.jai";
+#load "quadtree.jai";
+#load "math.jai";
+
+Input :: #import "Input";
 
 SHADER :: #import, dir "shader";
+
+is_key_down :: inline (key_code : Input.Key_Code) -> bool { return (Input.input_button_states[cast (s64) key_code] & .DOWN) != 0; }
+
+ok_or_exit :: inline (success: bool, err_msg_format: string, args: ..Any, flags := Log_Flags.ERROR, exit_code : s32 = 1) {
+    if success return;
+
+    log(err_msg_format, ..args, flags=flags);
+    exit(exit_code);
+} @PrintLike
+
+DEBUG :: true;

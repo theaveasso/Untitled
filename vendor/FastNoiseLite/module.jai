@@ -67,6 +67,7 @@ FNL_Noise_Type :: enum u8 {
 FNL_Fractal_Type :: enum u8 {
     None;
     FBM;
+    RIDGED;
 }
 
 // 2D noise at given position using the state settings
@@ -89,8 +90,9 @@ get_noise_2d :: (using fnl_state : *FNL_State, x : float, y : float) -> float {
 
 
     if fractal_type == {
-        case .FBM; return gen_fractal_fbm_2d(fnl_state, x, y);
-        case;      return gen_noise_single_2d(fnl_state, seed, x, y);
+        case .FBM;      return gen_fractal_fbm_2d(fnl_state, x, y);
+        case .RIDGED;   return gen_fractal_ridged_2d(fnl_state, x, y);
+        case;           return gen_noise_single_2d(fnl_state, seed, x, y);
     } 
 }
 
@@ -304,13 +306,31 @@ gen_fractal_fbm_2d :: (using state : *FNL_State, x : float, y : float) -> float 
         sum += xx (noise * amp);
         amp *= lerp(1.0, fast_min(noise + 1, 2) * 0.5, weighted_strength);
 
-        x *= lacunarity;
-        y *= lacunarity;
+        x   *= lacunarity;
+        y   *= lacunarity;
         amp *= state.gain;
     }
 
     return sum;
 }
+
+gen_fractal_ridged_2d :: (using state : *FNL_State, x : float, y : float) -> float {
+    sum := 0.0;
+    amp := calculate_fractal_bounding(state);
+
+    for 1..octaves {
+        _seed := seed + 1;
+        noise := gen_noise_single_2d(state, seed, x, y);
+        sum += xx (noise * -2 + 1) * amp;
+        amp *= lerp(1.0, 1 - noise, weighted_strength);
+
+        x   *= lacunarity;
+        y   *= lacunarity;
+        amp *= state.gain;
+    }
+
+    return sum;
+} 
 
 GRADIENTS_2D : [256]float64 = 
 .[
@@ -347,3 +367,5 @@ GRADIENTS_2D : [256]float64 =
     0.38268343236509, 0.923879532511287, 0.923879532511287, 0.38268343236509, 0.923879532511287, -0.38268343236509, 0.38268343236509, -0.923879532511287,
     -0.38268343236509, -0.923879532511287, -0.923879532511287, -0.38268343236509, -0.923879532511287, 0.38268343236509, -0.38268343236509, 0.923879532511287,
 ];
+
+#import "Math";
