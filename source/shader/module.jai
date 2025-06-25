@@ -1,1 +1,0 @@
-#load "triangle.jai";
