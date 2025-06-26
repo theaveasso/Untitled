@@ -12,10 +12,6 @@ Graphics_Device :: struct {
 
     viewport                : D3D11_VIEWPORT;
 
-    vertex_shader : *ID3D11VertexShader;
-    pixel\_shader : *ID3D11PixelShader;
-    vertex_layout : *ID3D11InputLayout;
-    vertex_buffer : *ID3D11Buffer;
 }
 
 graphics_device_init :: (using rdsys : *Graphics_Device, hwnd : Window_Type, enable_4x_msaa : bool, quality_4x_msaa : *u32) -> bool {
@@ -128,7 +124,7 @@ graphics_device_init :: (using rdsys : *Graphics_Device, hwnd : Window_Type, ena
         IUnknown_Release(dxgi_factory);
     }
 
-    HR(IDXGIFactory_MakeWindowAssociation(dxgi_factory, hwnd, cast(u32) DXGI_MWA.NO_ALT_ENTER | DXGI_MWA.NO_WINDOW_CHANGES));
+    HR(IDXGIFactory_MakeWindowAssociation(dxgi_factory, hwnd, cast(u32) DXGI_MWA.NO_ALT_ENTER | .NO_WINDOW_CHANGES));
 
     D3D11SetDebugObjectName(d3d_device, d3d_context, "ImmediateContext");
     D3D11SetDebugObjectName(d3d_device, d3d_deferred_context, "DeferredContext");
@@ -145,8 +141,8 @@ graphics_device_init :: (using rdsys : *Graphics_Device, hwnd : Window_Type, ena
     vp.TopLeftY = 0;
 
     // ? should we use deferred context instead
-    ID3D11DeviceContext_RSSetViewports(d3d_deferred_context, 1, *vp);
-    ID3D11DeviceContext_OMSetRenderTargets(d3d_deferred_context, 1, *render_target_view, null);
+    ID3D11DeviceContext_RSSetViewports(d3d_context, 1, *vp);
+    ID3D11DeviceContext_OMSetRenderTargets(d3d_context, 1, *render_target_view, null);
 
     return true;
 }
@@ -161,8 +157,9 @@ renderer_on_fini :: (using rdsys : *Graphics_Device) {
 }
 
 renderer_clear        :: (using rdsys : *Graphics_Device) {
-    color: [4]float = .[1.0, 0.0, 1.0, 1.0];
-    ID3D11DeviceContext_ClearRenderTargetView(d3d_deferred_context, render_target_view, *color);
+    color: [4]float = .[0.0, 0.0, 0.0, 1.0];
+    ID3D11DeviceContext_ClearRenderTargetView(d3d_context, render_target_view, *color);
+    ID3D11DeviceContext_ClearDepthStencilView(d3d_context, depth_stencil_view, cast(u32) D3D11_CLEAR_FLAG.DEPTH | D3D11_CLEAR_FLAG.STENCIL, 1.0, 0);
 }
 
 renderer_exec_cmdlist :: (using rdsys : *Graphics_Device) {

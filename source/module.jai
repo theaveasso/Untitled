@@ -3,6 +3,8 @@
 #load "shader.jai";
 
 #import "Compiler";
+#import "String";
+#import "Windows_Utf8";
 
 ASSERT_ON_FAIL  :: true;
 BREAK_ON_ERROR  :: false; 
