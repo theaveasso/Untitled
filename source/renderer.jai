@@ -142,7 +142,7 @@ graphics_device_init :: (using rdsys : *Graphics_Device, hwnd : Window_Type, ena
 
     // ? should we use deferred context instead
     ID3D11DeviceContext_RSSetViewports(d3d_context, 1, *vp);
-    ID3D11DeviceContext_OMSetRenderTargets(d3d_context, 1, *render_target_view, null);
+    ID3D11DeviceContext_OMSetRenderTargets(d3d_context, 1, *render_target_view, depth_stencil_view);
 
     return true;
 }

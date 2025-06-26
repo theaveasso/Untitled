@@ -18,6 +18,9 @@ main :: () {
         Input.update_window_events();
         for Input.events_this_frame {
             if it.type == .QUIT then g_should_quit = true;
+            if it.type == .KEYBOARD {
+                if it.key_pressed if it.key_code == .ESCAPE g_should_quit = true;
+            }
         }
 
         engine_update();

@@ -21,6 +21,12 @@ compile_shader :: (source: string, entry_point: string, shader_model: string, lo
 }
 
 SHADER_TEXT :: #string HLSL
+cbuffer Constant_Buffer : register(b0) {
+    matrix g_Model;
+    matrix g_View;
+    matrix g_Proj;
+};
+
 struct Vertex_In {
     float3 pos      : POSITION;
     float4 color    : COLOR; 
@@ -33,7 +39,7 @@ struct Vertex_Out {
 
 Vertex_Out VS(Vertex_In v_in) {
     Vertex_Out v_out;
-    v_out.posH  = float4(v_in.pos, 1.0f);
+    v_out.posH = mul(g_Proj, mul(g_View, mul(g_Model, float4(v_in.pos, 1.0f))));
     v_out.color = v_in.color;
 
     return v_out;
