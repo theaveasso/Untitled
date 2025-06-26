@@ -61,15 +61,21 @@ engine_effect_init :: (using engine : *Engine) -> bool {
 }
 
 engine_resource_init :: (using engine : *Engine) -> bool {
-    vertices : [3]Vertex_Pos_Color = .[
-        .{pos=.{0.0, 0.5, 0.5}, color=.{0.0, 1.0, 0.0, 1.0}},
-        .{pos=.{0.5, -0.5, 0.5}, color=.{0.0, 0.0, 1.0, 1.0}},
-        .{pos=.{-0.5, -0.5, 0.5}, color=.{1.0, 0.0, 0.0, 1.0}},
+    vertices : [6]Vertex_Pos_Color = .[
+        // Triangle 1
+        .{pos = .{-0.5,  0.5, 0.5}, color = .{1.0, 0.0, 0.0, 1.0}}, // Top-left
+        .{pos = .{ 0.5, -0.5, 0.5}, color = .{0.0, 1.0, 0.0, 1.0}}, // Bottom-right
+        .{pos = .{-0.5, -0.5, 0.5}, color = .{0.0, 0.0, 1.0, 1.0}}, // Bottom-left
+
+        // Triangle 2
+        .{pos = .{-0.5,  0.5, 0.5}, color = .{1.0, 0.0, 0.0, 1.0}}, // Top-left
+        .{pos = .{ 0.5,  0.5, 0.5}, color = .{1.0, 1.0, 0.0, 1.0}}, // Top-right
+        .{pos = .{ 0.5, -0.5, 0.5}, color = .{0.0, 1.0, 0.0, 1.0}}, // Bottom-right
     ];
 
     bd : D3D11_BUFFER_DESC;
     bd.Usage = .DEFAULT;
-    bd.ByteWidth = size_of(Vertex_Pos_Color) * 3;
+    bd.ByteWidth = size_of(Vertex_Pos_Color) * vertices.count;
     bd.BindFlags = .VERTEX_BUFFER;
     bd.CPUAccessFlags = 0;
 
@@ -93,7 +99,7 @@ engine_update  :: () {
     using g_engine.renderer;
     ID3D11DeviceContext_VSSetShader(d3d_context, g_engine.vertex_shader, null, 0);
     ID3D11DeviceContext_PSSetShader(d3d_context, g_engine.pixel_shader, null, 0);
-    ID3D11DeviceContext_Draw(d3d_context, 3, 0);
+    ID3D11DeviceContext_Draw(d3d_context, 6, 0);
 
     renderer_present(*g_engine.renderer);
 }
