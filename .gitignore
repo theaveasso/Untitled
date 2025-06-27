@@ -1,5 +1,7 @@
 .build
 *.exe
 *.pdb
+*.ilk
 *.dll
+*.lib
 *.rdc

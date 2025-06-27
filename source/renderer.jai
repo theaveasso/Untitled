@@ -156,6 +156,23 @@ renderer_on_fini :: (using rdsys : *Graphics_Device) {
     if d3d_device           IUnknown_Release(d3d_device);
 }
 
+imgui_init :: (hwnd : Window_Type, using rdsys : *Graphics_Device) -> bool {
+
+    IMGUI.CreateContext();
+    io := IMGUI.GetIO();
+    io.ConfigFlags_ |= .NavEnableKeyboard;
+    io.ConfigFlags_ |= .DockingEnable;
+    io.ConfigWindowsMoveFromTitleBarOnly = true;
+
+    IMGUI.StyleColorsDark();
+
+    ImplWin32_Init(hwnd);
+    ImplDX11_Init(d3d_device, d3d_context);
+
+    return true;
+}
+
+
 renderer_clear        :: (using rdsys : *Graphics_Device) {
     color: [4]float = .[0.0, 0.0, 0.0, 1.0];
     ID3D11DeviceContext_ClearRenderTargetView(d3d_context, render_target_view, *color);
@@ -209,7 +226,3 @@ renderer_resize :: (using rdsys : *Graphics_Device, width : int, height : int, e
     HR(ID3D11Device_CreateTexture2D(d3d_device, *depth_stencil_desc, null, *depth_stencil_buffer));
     HR(ID3D11Device_CreateDepthStencilView(d3d_device, depth_stencil_buffer, null, *depth_stencil_view));
 }
-
-#import "dxgi";
-#import "d3d11"()(INCLUDE_DEBUG_BINDINGS = true);
-#import "d3d_compiler";

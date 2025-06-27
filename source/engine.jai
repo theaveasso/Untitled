@@ -40,11 +40,13 @@ Constant_Buffer :: struct {
 engine_init    :: (using engine : *Engine) -> bool {
     success := false;
 
+    // context._windows_windowproc = UntitledWindowProc;
     hwnd = create_window(g_window_width, g_window_height, "Untitled", wanted_msaa=WANTED_MSAA, background_color_rgb=.[0, 0, 0]);
     success = hwnd != null;
 
     enable_4x_msaa = true;
     success = graphics_device_init(*renderer, hwnd, enable_4x_msaa, *quality_4x_msaa);
+    success = imgui_init(hwnd, *renderer);
     success = engine_effect_init(engine);
     success = engine_resource_init(engine);
 
@@ -83,12 +85,12 @@ engine_effect_init :: (using engine : *Engine) -> bool {
 
 engine_resource_init :: (using engine : *Engine) -> bool {
     vertices_quad : [4]Vertex_Pos_Color = .[
-        // // Triangle 1
+        // Triangle 1
         // .{pos = .{-0.5,  0.5, 0.5}, color = .{1.0, 0.0, 0.0, 1.0}}, // Top-left
         // .{pos = .{ 0.5, -0.5, 0.5}, color = .{0.0, 1.0, 0.0, 1.0}}, // Bottom-right
         // .{pos = .{-0.5, -0.5, 0.5}, color = .{0.0, 0.0, 1.0, 1.0}}, // Bottom-left
 
-        // // Triangle 2
+        // Triangle 2
         // .{pos = .{-0.5,  0.5, 0.5}, color = .{1.0, 0.0, 0.0, 1.0}}, // Top-left
         // .{pos = .{ 0.5,  0.5, 0.5}, color = .{1.0, 1.0, 0.0, 1.0}}, // Top-right
         // .{pos = .{ 0.5, -0.5, 0.5}, color = .{0.0, 1.0, 0.0, 1.0}}, // Bottom-right
@@ -180,19 +182,76 @@ engine_resource_init :: (using engine : *Engine) -> bool {
     return true;
 }
 
-phi, theta := 0.0;
-
 engine_update  :: () {
-    phi += 0.0001;
-    theta += 0.00015;
+    ImplDX11_NewFrame();
+    ImplWin32_NewFrame();
+    IMGUI.NewFrame();
+
+    engine_scene_update(*g_engine, 0.1667);
+
+    renderer_clear(*g_engine.renderer);
+
+    using g_engine.renderer;
+    ID3D11DeviceContext_DrawIndexed(d3d_context, g_engine.indices_count, 0, 0);
+
+    IMGUI.Render();
+    ImplDX11_RenderDrawData(IMGUI.GetDrawData());
+    renderer_present(*g_engine.renderer);
+}
+
+#scope_file
+is_open := true;
+tx, ty, phi, theta := 0.0;
+scale := 1.0;
+
+animate_cube : bool = true;
+
+engine_scene_update :: (engine : *Engine, dt : float) {
+    if animate_cube {
+        phi += 0.0003 * dt;
+        theta += 0.00037 * dt;
+    }
+
+    io := IMGUI.GetIO();
+
+    if (!IMGUI.IsAnyItemActive()) {
+        if (IMGUI.IsMouseDragging(.Left)) {
+            tx -= io.MouseDelta.x * 0.01;
+            ty -= io.MouseDelta.y * 0.01;
+        } else if (IMGUI.IsMouseDragging(.Right)) {
+            phi -= io.MouseDelta.y * 0.01;
+            theta -= io.MouseDelta.x * 0.01;
+        } else if (io.MouseWheel != 0.0) {
+            scale += 0.02 * io.MouseWheel;
+            Clamp(*scale, 0.2, 2);
+        }
+    }
+
+    if IMGUI.Begin("Use ImGui") {
+        IMGUI.Checkbox("Animate Cube", *animate_cube);
+        IMGUI.SameLine(0.0, 25.0);
+        if IMGUI.Button("Reset Params") {
+            tx, ty , phi, theta = 0.0;
+            scale = 1.0;
+        }
+
+        IMGUI.SliderFloat("Scale", *scale, 0.2, 1);
+
+        IMGUI.Text(tprint("Phi: % degree", phi));
+        IMGUI.SliderFloat("##1", *phi, -PI, PI, "");
+
+        IMGUI.Text(tprint("Theta: % degree", theta));
+        IMGUI.SliderFloat("##2", *theta, -PI, PI, "");
+    }
+    IMGUI.End();
 
     rotation, yaw, pitch : Quaternion;
 
     set_from_axis_and_angle(*yaw, .{1, 0, 0}, phi);
-    set_from_axis_and_angle(*pitch, .{0, 1, 0}, phi);
+    set_from_axis_and_angle(*pitch, .{0, 1, 0}, theta);
     rotation = yaw * pitch;
 
-    model := translate(Matrix4_Identity, .{0, 0, 5}) * rotation_matrix(Matrix4, rotation);
+    model := translate(Matrix4_Identity, .{tx, ty, 5}) * rotation_matrix(Matrix4, rotation) * make_scale_matrix4(xyz(scale));
     view := make_look_at_matrix(.{0, 0, -5}, .{0, 0, 0}, .{0, 1, 0}, false);
     proj := make_projection_matrix(25 * PI / 180.0, xx ASPECT, 0.1, 1000);
 
@@ -204,11 +263,6 @@ engine_update  :: () {
     memcpy(mapped_data.pData, *cb, size_of(Constant_Buffer));
     ID3D11DeviceContext_Unmap(d3d_context, g_engine.constant_buffer, 0);
 
-    renderer_clear(*g_engine.renderer);
-
-    ID3D11DeviceContext_DrawIndexed(d3d_context, g_engine.indices_count, 0, 0);
-
-    renderer_present(*g_engine.renderer);
 }
 
 engine_draw2d  :: (engine : *Engine) {
