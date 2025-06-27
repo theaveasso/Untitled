@@ -19,6 +19,7 @@ IMGUI :: #import, dir "../vendor/imgui";
 ImDrawData      :: IMGUI.ImDrawData;
 ImTextureData   :: IMGUI.ImTextureData;
 
+#load "geometry.jai";
 #load "engine.jai";
 #load "renderer.jai";
 #load "shader.jai";
