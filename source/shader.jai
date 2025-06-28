@@ -1,4 +1,49 @@
+Shader :: struct {
+    // platform specific
+    vertex_shader : *ID3D11VertexShader;
+    pixel\_shader : *ID3D11PixelShader;
+    vertex_layout : *ID3D11InputLayout;
+
+    sampler_state : *ID3D11SamplerState;
+}
+
+shader_init :: (gfx_device : *Graphics_Device, using shader : *Shader, source : string, layout : *[]D3D11_INPUT_ELEMENT_DESC, have_sampler : bool = false) -> bool {
+    vs := compile_shader(source, "VS", "vs_5_0");
+    defer free(vs);
+    assert(vs.data != null);
+    HR(ID3D11Device_CreateVertexShader(gfx_device.d3d_device, vs.data, cast(u64) vs.count, null, *vertex_shader));
+
+    HR(ID3D11Device_CreateInputLayout(gfx_device.d3d_device, layout.data, cast(u32) layout.count, vs.data, cast(u64) vs.count, *vertex_layout));
+    ID3D11DeviceContext_IASetInputLayout(gfx_device.d3d_context, vertex_layout);
+
+    ps := compile_shader(source, "PS", "ps_5_0");
+    defer free(vs);
+    assert(ps.data != null);
+    HR(ID3D11Device_CreatePixelShader(gfx_device.d3d_device, ps.data, cast(u64) ps.count, null, *pixel_shader));
+
+    if have_sampler {
+        sampler_desc : D3D11_SAMPLER_DESC;
+        sampler_desc.AddressU = .WRAP; 
+        sampler_desc.AddressV = .WRAP;
+        sampler_desc.AddressW = .WRAP;
+        sampler_desc.MipLODBias = 0.0;
+        sampler_desc.MaxAnisotropy = 1;
+        sampler_desc.ComparisonFunc = .ALWAYS;
+        sampler_desc.BorderColor[0] = 0;
+        sampler_desc.BorderColor[1] = 0;
+        sampler_desc.BorderColor[2] = 0;
+        sampler_desc.BorderColor[3] = 0;
+        sampler_desc.MinLOD = 0;
+        sampler_desc.MaxLOD = FLOAT32_MAX;
+
+        HR(ID3D11Device_CreateSamplerState(gfx_device.d3d_device, *sampler_desc, *sampler_state));
+    }
+
+    return true;
+}
+
 compile_shader :: (source: string, entry_point: string, shader_model: string, loc := #caller_location) -> string {
+
     flags := D3DCOMPILE.ENABLE_STRICTNESS;
     #if DEBUG {
         flags |= .DEBUG;
@@ -79,10 +124,13 @@ cbuffer PS_Constant_Buffer : register(b1) {
     float             pad;
 };
 
+Texture2D    g_Texture0: register(t0);
+SamplerState g_Sampler0: register(s0);
+
 struct Vertex_In {
     float3 position     : POSITION;
     float4 color_scale  : COLOR; 
-    // float2 uv           : TEXCOORD; 
+    float2 uv           : TEXCOORD; 
     float3 normal       : NORMAL;
     // float4 tangent      : TANGENT;
 };
@@ -91,6 +139,7 @@ struct Vertex_Out {
     float4 posH     : SV_POSITION;
     float3 posW     : POSITION; // world position
     float3 normalW  : NORMAL;   // world normal
+    float2 texcoord : TEXCOORD;
     float4 color    : COLOR;
 };
 
@@ -203,41 +252,45 @@ Vertex_Out VS(Vertex_In v_in) {
     v_out.normalW = v_in.normal;
     v_out.posW    = pos_w.xyz; 
     v_out.color   = v_in.color_scale;
+    v_out.texcoord= v_in.uv;
 
     return v_out;
 }
 
 float4 PS(Vertex_Out p_in) : SV_Target {
-    p_in.normalW = normalize(p_in.normalW);
+    // p_in.normalW = normalize(p_in.normalW);
 
-    float3 to_eye_w = normalize(g_EyePositionW - p_in.posW);
+    // float3 to_eye_w = normalize(g_EyePositionW - p_in.posW);
 
-    float4 ambient, diffuse, spec;
-    float4 A, D, S;
+    // float4 ambient, diffuse, spec;
+    // float4 A, D, S;
 
-    ambient = diffuse = spec = float4(0.0f, 0.0f, 0.0f, 0.0f);
-    A = D = S = float4(0.0f, 0.0f, 0.0f, 0.0f);
+    // ambient = diffuse = spec = float4(0.0f, 0.0f, 0.0f, 0.0f);
+    // A = D = S = float4(0.0f, 0.0f, 0.0f, 0.0f);
 
-    compute_directional_light(g_Material, g_DirectionalLight, p_in.normalW, to_eye_w, A, D, S);
-    ambient += A;
-    diffuse += D;
-    spec    += S;
+    // compute_directional_light(g_Material, g_DirectionalLight, p_in.normalW, to_eye_w, A, D, S);
+    // ambient += A;
+    // diffuse += D;
+    // spec    += S;
 
-    compute_point_light(g_Material, g_PointLight, p_in.posW, p_in.normalW, to_eye_w, A, D, S);
-    ambient += A;
-    diffuse += D;
-    spec    += S;
+    // compute_point_light(g_Material, g_PointLight, p_in.posW, p_in.normalW, to_eye_w, A, D, S);
+    // ambient += A;
+    // diffuse += D;
+    // spec    += S;
 
-    compute_spot_light(g_Material, g_SpotLight, p_in.posW, p_in.normalW, to_eye_w, A, D, S);
-    ambient += A;
-    diffuse += D;
-    spec    += S;
+    // compute_spot_light(g_Material, g_SpotLight, p_in.posW, p_in.normalW, to_eye_w, A, D, S);
+    // ambient += A;
+    // diffuse += D;
+    // spec    += S;
 
-    float4 lit_color = p_in.color * (ambient + diffuse) + spec;
-    lit_color.a = g_Material.Diffuse.a * p_in.color.a;
-
-    return lit_color;
+    // float4 lit_color = p_in.color * (ambient + diffuse) + spec;
+    // lit_color.a = g_Material.Diffuse.a * p_in.color.a;
+    // return lit_color;
     // return p_in.color;
+
+    float4 out_color;
+    out_color = g_Texture0.Sample(g_Sampler0, p_in.texcoord);
+    return out_color;
 }
 
 HLSL
