@@ -25,6 +25,7 @@ ImTextureData   :: IMGUI.ImTextureData;
 #load "geometry.jai";
 #load "engine.jai";
 #load "renderer.jai";
+#load "light.jai";
 #load "shader.jai";
 
 #load "texture.jai";

@@ -49,42 +49,6 @@ Material :: struct {
     reflect : Vector4;
 }
 
-// Light
-Directional_Light :: struct {
-    ambient : Vector4;
-    diffuse : Vector4;
-    specular: Vector4;
-    direction:Vector3;
-    pad     : float;
-}
-
-Point_Light :: struct {
-    ambient : Vector4;
-    diffuse : Vector4;
-    specular: Vector4;
-
-    position: Vector3;
-    range   : float; 
-
-    att     : Vector3;
-    pad     : float;
-}
-
-Spot_Light :: struct {
-    ambient : Vector4;
-    diffuse : Vector4;
-    specular: Vector4;
-
-    position: Vector3;
-    range   : float; 
-
-    direction: Vector3;
-    spot    : float;
-
-    att     : Vector3;
-    pad     : float;
-}
-
 VS_Constant_Buffer :: struct {
     model   : Matrix4;
     view    : Matrix4;
@@ -94,13 +58,13 @@ VS_Constant_Buffer :: struct {
 
 PS_Constant_Buffer :: struct{
     directional_light : Directional_Light;
-    point\     _light : Point_Light;
-    spot\      _light : Spot_Light;
+    // point\     _light : Point_Light;
+    // spot\      _light : Spot_Light;
 
-    material          : Material;
+    // material          : Material;
 
-    eye_position      : Vector3;
-    pad               : float;
+    // eye_position      : Vector3;
+    // pad               : float;
 }
 
 engine_init    :: (using engine : *Engine) -> bool {
@@ -181,13 +145,13 @@ engine_resource_init :: (using engine : *Engine) -> bool {
         spot =12.0,
     };
 
-    gpu_pixel_buffer= .{
-        directional_light=directional_light,
-        point_light      =point_light,
-        spot_light       =spot_light,
-        material         = .{ambient =xyzw(0.5, 0.5, 0.5, 1.0), diffuse =xyzw(1.0), specular=xyzw(0.5, 0.5, 0.5, 1.0)},
-        eye_position     = .{0.0, 0.0, -5.0},
-    };
+    // gpu_pixel_buffer= .{
+    //     directional_light=directional_light,
+    //     point_light      =point_light,
+    //     spot_light       =spot_light,
+    //     material         = .{ambient =xyzw(0.5, 0.5, 0.5, 1.0), diffuse =xyzw(1.0), specular=xyzw(0.5, 0.5, 0.5, 1.0)},
+    //     eye_position     = .{0.0, 0.0, -5.0},
+    // };
 
     texture_load_from_file(*gfx_device, *g_dirextx_texture, "resources/rock_wall_13_diff_4k.jpg");
 
@@ -207,12 +171,11 @@ engine_update  :: () {
     ImplWin32_NewFrame();
     IMGUI.NewFrame();
 
-    engine_scene_update(*g_engine, 0.1667);
-
     renderer_clear(*g_engine.gfx_device);
 
+    engine_scene_update(*g_engine, 0.1667);
+
     using g_engine.gfx_device;
-    ID3D11DeviceContext_DrawIndexed(d3d_context, g_engine.indices_count, 0, 0);
 
     IMGUI.Render();
     ImplDX11_RenderDrawData(IMGUI.GetDrawData());
@@ -291,6 +254,10 @@ engine_scene_update :: (using engine : *Engine, dt : float) {
         IMGUI.Separator();
         IMGUI.Text("Light");
         if IMGUI.Combo(to_c_string("Light Type"), *current_light_index, light_types.data, cast(s32) light_types.count) {
+            if current_light_index ==  {
+                case; #through;
+                case 0; gpu_pixel_buffer.directional_light = make_directional_light(.{1.0, 1.0, 1.0, 1.0}, .{0.0, -1.0, 0.0});
+            }
         }
 
         IMGUI.PushID(current_light_index);
@@ -299,16 +266,16 @@ engine_scene_update :: (using engine : *Engine, dt : float) {
                 IMGUI.ColorEdit3("Ambient",  *gpu_pixel_buffer.directional_light.ambient.xyz);
                 IMGUI.ColorEdit3("Diffuse",  *gpu_pixel_buffer.directional_light.diffuse.xyz);
                 IMGUI.ColorEdit3("Specular", *gpu_pixel_buffer.directional_light.specular.xyz);
-            case 1;
-                IMGUI.ColorEdit3("Ambient",  *gpu_pixel_buffer.point_light.ambient.xyz);
-                IMGUI.ColorEdit3("Diffuse",  *gpu_pixel_buffer.point_light.diffuse.xyz);
-                IMGUI.ColorEdit3("Specular", *gpu_pixel_buffer.point_light.specular.xyz);
-                IMGUI.InputFloat("Range",    *gpu_pixel_buffer.point_light.range);
-                IMGUI.InputFloat3("Range",   *gpu_pixel_buffer.point_light.att);
-            case 2;
-                IMGUI.ColorEdit3("Ambient",  *gpu_pixel_buffer.spot_light.ambient.xyz);
-                IMGUI.ColorEdit3("Diffuse",  *gpu_pixel_buffer.spot_light.diffuse.xyz);
-                IMGUI.ColorEdit3("Specular", *gpu_pixel_buffer.spot_light.specular.xyz);
+            // case 1;
+            //     IMGUI.ColorEdit3("Ambient",  *gpu_pixel_buffer.point_light.ambient.xyz);
+            //     IMGUI.ColorEdit3("Diffuse",  *gpu_pixel_buffer.point_light.diffuse.xyz);
+            //     IMGUI.ColorEdit3("Specular", *gpu_pixel_buffer.point_light.specular.xyz);
+            //     IMGUI.InputFloat("Range",    *gpu_pixel_buffer.point_light.range);
+            //     IMGUI.InputFloat3("Range",   *gpu_pixel_buffer.point_light.att);
+            // case 2;
+            //     IMGUI.ColorEdit3("Ambient",  *gpu_pixel_buffer.spot_light.ambient.xyz);
+            //     IMGUI.ColorEdit3("Diffuse",  *gpu_pixel_buffer.spot_light.diffuse.xyz);
+            //     IMGUI.ColorEdit3("Specular", *gpu_pixel_buffer.spot_light.specular.xyz);
         }
         IMGUI.PopID();
 
@@ -321,18 +288,29 @@ engine_scene_update :: (using engine : *Engine, dt : float) {
     set_from_axis_and_angle(*pitch, .{0, 1, 0}, theta);
     rotation = yaw * pitch;
 
-    model := translate(Matrix4_Identity, .{tx, ty, 5}) * rotation_matrix(Matrix4, rotation) * make_scale_matrix4(xyz(scale));
+    // model := translate(Matrix4_Identity, .{tx, ty, 5}) * rotation_matrix(Matrix4, rotation) * make_scale_matrix4(xyz(scale));
     view := make_look_at_matrix(.{0, 0, -5}, .{0, 0, 0}, .{0, 1, 0}, false);
     proj := make_projection_matrix(25 * PI / 180.0, xx ASPECT, 0.1, 1000);
 
-    cb := VS_Constant_Buffer.{model=transpose(model), view=transpose(view), proj=transpose(proj)};
     using g_engine.gfx_device;
 
     mapped_data : D3D11_MAPPED_SUBRESOURCE;
 
-    HR(ID3D11DeviceContext_Map(d3d_context, g_engine.constant_buffer[0], 0, .WRITE_DISCARD, 0, *mapped_data));
-    memcpy(mapped_data.pData, *cb, size_of(VS_Constant_Buffer));
-    ID3D11DeviceContext_Unmap(d3d_context, g_engine.constant_buffer[0], 0);
+    box_transforms : [..]Matrix4;
+    array_add(*box_transforms, translate(Matrix4_Identity, .{0, 0, 5}) * rotation_matrix(Matrix4, rotation) * make_scale_matrix4(xyz(0.1)));
+    array_add(*box_transforms, translate(Matrix4_Identity, .{1, 1, 5}) * rotation_matrix(Matrix4, rotation) * make_scale_matrix4(xyz(0.5)));
+    array_add(*box_transforms, translate(Matrix4_Identity, .{0, 2, 7}) * rotation_matrix(Matrix4, rotation) * make_scale_matrix4(xyz(0.4)));
+    array_add(*box_transforms, translate(Matrix4_Identity, .{1, 0, 8}) * rotation_matrix(Matrix4, rotation) * make_scale_matrix4(xyz(0.3)));
+    array_add(*box_transforms, translate(Matrix4_Identity, .{0, 0, 9}) * rotation_matrix(Matrix4, -rotation) * make_scale_matrix4(xyz(0.3)));
+
+    for box_transforms {
+        cb := VS_Constant_Buffer.{model=transpose(it), view=transpose(view), proj=transpose(proj)};
+        HR(ID3D11DeviceContext_Map(d3d_context, g_engine.constant_buffer[0], 0, .WRITE_DISCARD, 0, *mapped_data));
+        memcpy(mapped_data.pData, *cb, size_of(VS_Constant_Buffer));
+        ID3D11DeviceContext_Unmap(d3d_context, g_engine.constant_buffer[0], 0);
+
+        ID3D11DeviceContext_DrawIndexed(d3d_context, g_engine.indices_count, 0, 0);
+    }
 
     HR(ID3D11DeviceContext_Map(d3d_context, g_engine.constant_buffer[1], 0, .WRITE_DISCARD, 0, *mapped_data));
     memcpy(mapped_data.pData, *gpu_pixel_buffer, size_of(PS_Constant_Buffer));

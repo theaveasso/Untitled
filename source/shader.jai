@@ -66,6 +66,7 @@ compile_shader :: (source: string, entry_point: string, shader_model: string, lo
 }
 
 SHADER_TEXT :: #string HLSL
+
 struct Material {
     float4 Ambient;
     float4 Diffuse;
@@ -116,12 +117,12 @@ cbuffer VS_Constant_Buffer : register(b0) {
 
 cbuffer PS_Constant_Buffer : register(b1) {
     Directional_Light g_DirectionalLight;
-    Point_Light       g_PointLight;
-    Spot_Light        g_SpotLight;
+    // Point_Light       g_PointLight;
+    // Spot_Light        g_SpotLight;
 
-    Material          g_Material;
-    float3            g_EyePositionW;
-    float             pad;
+    // Material          g_Material;
+    // float3            g_EyePositionW;
+    // float             pad;
 };
 
 Texture2D    g_Texture0: register(t0);
@@ -132,7 +133,6 @@ struct Vertex_In {
     float4 color_scale  : COLOR; 
     float2 uv           : TEXCOORD; 
     float3 normal       : NORMAL;
-    // float4 tangent      : TANGENT;
 };
 
 struct Vertex_Out {
@@ -143,9 +143,8 @@ struct Vertex_Out {
     float4 color    : COLOR;
 };
 
-void compute_directional_light(Material M, Directional_Light L,
+void compute_directional_light(Directional_Light L,
     float3 normal, 
-    float3 to_eye,
     out float4 ambient,
     out float4 diffuse,
     out float4 spec) {
@@ -156,15 +155,14 @@ void compute_directional_light(Material M, Directional_Light L,
 
     float3 light_vec = -L.Direction;
 
-    ambient = M.Ambient * L.Ambient;
+    ambient = L.Ambient;
     float diffuse_factor = dot(light_vec, normal);
     [flatten]
     if (diffuse_factor > 0.0) {
         float3 v = reflect(-light_vec, normal);
-        float  spec_factor = pow(max(dot(v, to_eye), 0.0), M.Specular.w);
 
-        diffuse = diffuse_factor * M.Diffuse * L.Diffuse;
-        spec    = spec_factor * M.Specular * L.Specular;
+        diffuse = diffuse_factor * L.Diffuse;
+        spec    = L.Specular;
     }
 }
 
@@ -248,8 +246,8 @@ Vertex_Out VS(Vertex_In v_in) {
     float4 pos_w     = mul(g_Model, float4(v_in.position, 1.0f));
 
     v_out.posH = mul(view_proj, pos_w);
-    // v_out.normalW = mul(v_in.Normal, float(3x3) g_WorldInvTranspose);
-    v_out.normalW = v_in.normal;
+    v_out.normalW = normalize(mul((float3x3)g_Model, v_in.normal));
+    // v_out.normalW = v_in.normal;
     v_out.posW    = pos_w.xyz; 
     v_out.color   = v_in.color_scale;
     v_out.texcoord= v_in.uv;
@@ -258,20 +256,18 @@ Vertex_Out VS(Vertex_In v_in) {
 }
 
 float4 PS(Vertex_Out p_in) : SV_Target {
-    // p_in.normalW = normalize(p_in.normalW);
-
     // float3 to_eye_w = normalize(g_EyePositionW - p_in.posW);
 
-    // float4 ambient, diffuse, spec;
-    // float4 A, D, S;
+    float4 ambient, diffuse, spec;
+    float4 A, D, S;
 
-    // ambient = diffuse = spec = float4(0.0f, 0.0f, 0.0f, 0.0f);
-    // A = D = S = float4(0.0f, 0.0f, 0.0f, 0.0f);
+    ambient = diffuse = spec = float4(0.0f,0.0f,0.0f,0.0f);
+    A = D = S = float4(0.0f,0.0f,0.0f,0.0f);
 
-    // compute_directional_light(g_Material, g_DirectionalLight, p_in.normalW, to_eye_w, A, D, S);
-    // ambient += A;
-    // diffuse += D;
-    // spec    += S;
+    compute_directional_light(g_DirectionalLight, p_in.normalW, A, D, S);
+    ambient += A;
+    diffuse += D;
+    spec    += S;
 
     // compute_point_light(g_Material, g_PointLight, p_in.posW, p_in.normalW, to_eye_w, A, D, S);
     // ambient += A;
@@ -290,7 +286,7 @@ float4 PS(Vertex_Out p_in) : SV_Target {
 
     float4 out_color;
     out_color = g_Texture0.Sample(g_Sampler0, p_in.texcoord);
-    return out_color;
+    return out_color * (ambient + diffuse);
 }
 
 HLSL
