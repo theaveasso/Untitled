@@ -51,10 +51,10 @@ make_box :: (width : float = 1.0, height : float = 1.0, depth : float = 1.0, col
 
     // uv
     for i : 0..5 {
-        vertices[i * 4].uv     = .{0.0, 1.0};
-        vertices[i * 4 + 1].uv = .{0.0, 0.0};
-        vertices[i * 4 + 2].uv = .{1.0, 0.0};
-        vertices[i * 4 + 3].uv = .{1.0, 1.0};
+        vertices[i * 4].uv0     = .{0.0, 1.0};
+        vertices[i * 4 + 1].uv0 = .{0.0, 0.0};
+        vertices[i * 4 + 2].uv0 = .{1.0, 0.0};
+        vertices[i * 4 + 3].uv0 = .{1.0, 1.0};
     }
 
     for i : 0..5 {

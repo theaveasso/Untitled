@@ -37,6 +37,7 @@ make_directional_light :: (_diffuse: Vector4, _direction: Vector3) -> Directiona
     directional_light: Directional_Light;
     directional_light.diffuse   = _diffuse;
     directional_light.direction = _direction;
+    directional_light.specular  = .{1.0, 1.0, 1.0, 1.0};
 
     return directional_light;
 }

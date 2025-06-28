@@ -113,6 +113,7 @@ cbuffer VS_Constant_Buffer : register(b0) {
     matrix g_Model;
     matrix g_View;
     matrix g_Proj;
+    // matrix g_WorldInvTranspose;
 };
 
 cbuffer PS_Constant_Buffer : register(b1) {
@@ -121,8 +122,8 @@ cbuffer PS_Constant_Buffer : register(b1) {
     // Spot_Light        g_SpotLight;
 
     // Material          g_Material;
-    // float3            g_EyePositionW;
-    // float             pad;
+    float3            g_EyePositionW;
+    float             pad;
 };
 
 Texture2D    g_Texture0: register(t0);
@@ -131,7 +132,8 @@ SamplerState g_Sampler0: register(s0);
 struct Vertex_In {
     float3 position     : POSITION;
     float4 color_scale  : COLOR; 
-    float2 uv           : TEXCOORD; 
+    float2 uv0          : TEXCOORD; 
+    float3 view_dir     : VIEWDIR;
     float3 normal       : NORMAL;
 };
 
@@ -145,6 +147,7 @@ struct Vertex_Out {
 
 void compute_directional_light(Directional_Light L,
     float3 normal, 
+    float3 viewdir,
     out float4 ambient,
     out float4 diffuse,
     out float4 spec) {
@@ -160,9 +163,10 @@ void compute_directional_light(Directional_Light L,
     [flatten]
     if (diffuse_factor > 0.0) {
         float3 v = reflect(-light_vec, normal);
+        float  spec_factor = pow(max(dot(v, viewdir), 0.0), L.Specular.w);
 
         diffuse = diffuse_factor * L.Diffuse;
-        spec    = L.Specular;
+        spec    = spec_factor * L.Specular;
     }
 }
 
@@ -250,13 +254,13 @@ Vertex_Out VS(Vertex_In v_in) {
     // v_out.normalW = v_in.normal;
     v_out.posW    = pos_w.xyz; 
     v_out.color   = v_in.color_scale;
-    v_out.texcoord= v_in.uv;
+    v_out.texcoord= v_in.uv0;
 
     return v_out;
 }
 
 float4 PS(Vertex_Out p_in) : SV_Target {
-    // float3 to_eye_w = normalize(g_EyePositionW - p_in.posW);
+    float3 view_dir = normalize(g_EyePositionW - p_in.posW);
 
     float4 ambient, diffuse, spec;
     float4 A, D, S;
@@ -264,7 +268,7 @@ float4 PS(Vertex_Out p_in) : SV_Target {
     ambient = diffuse = spec = float4(0.0f,0.0f,0.0f,0.0f);
     A = D = S = float4(0.0f,0.0f,0.0f,0.0f);
 
-    compute_directional_light(g_DirectionalLight, p_in.normalW, A, D, S);
+    compute_directional_light(g_DirectionalLight, p_in.normalW, view_dir, A, D, S);
     ambient += A;
     diffuse += D;
     spec    += S;
@@ -284,9 +288,11 @@ float4 PS(Vertex_Out p_in) : SV_Target {
     // return lit_color;
     // return p_in.color;
 
-    float4 out_color;
-    out_color = g_Texture0.Sample(g_Sampler0, p_in.texcoord);
-    return out_color * (ambient + diffuse);
+    float4 lit_color;
+    lit_color = g_Texture0.Sample(g_Sampler0, p_in.texcoord);
+    // apply light
+    lit_color *= (ambient + diffuse) + spec;
+    return lit_color;
 }
 
 HLSL

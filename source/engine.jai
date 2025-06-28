@@ -37,7 +37,8 @@ g_dirextx_texture : Texture;
 Immediate_Vertex :: struct {
     position:    Vector3;
     color_scale: Vector4;
-    uv:          Vector2;
+    uv0:         Vector2;
+    view_dir:    Vector3;
     normal:      Vector3;
     // tangent:     Vector4;
 }
@@ -63,8 +64,8 @@ PS_Constant_Buffer :: struct{
 
     // material          : Material;
 
-    // eye_position      : Vector3;
-    // pad               : float;
+    eye_position      : Vector3;
+    pad               : float;
 }
 
 engine_init    :: (using engine : *Engine) -> bool {
@@ -96,7 +97,8 @@ engine_effect_init :: (using engine : *Engine) -> bool {
         .{"POSITION",  0, .R32G32B32_FLOAT,    0,  0, .VERTEX_DATA, 0},
         .{"COLOR",     0, .R32G32B32A32_FLOAT, 0, 12, .VERTEX_DATA, 0},
         .{"TEXCOORD",  0, .R32G32_FLOAT,       0, 28, .VERTEX_DATA, 0},
-        .{"NORMAL",    0, .R32G32B32_FLOAT,    0, 36, .VERTEX_DATA, 0},
+        .{"VIEWDIR",   0, .R32G32B32_FLOAT,    0, 36, .VERTEX_DATA, 0},
+        .{"NORMAL",    0, .R32G32B32_FLOAT,    0, 48, .VERTEX_DATA, 0},
     ];
     success := shader_init(*gfx_device, *shader_sprite, SHADER_TEXT, *sprite_vertex_input_layout, true);
 
@@ -118,40 +120,7 @@ engine_resource_init :: (using engine : *Engine) -> bool {
     cbd.ByteWidth = size_of(PS_Constant_Buffer);
     HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *cbd, null, *constant_buffer[1]));
 
-    directional_light = .{
-        ambient  =xyzw(0.2, 0.2, 0.2, 1.0),
-        diffuse  =xyzw(0.8, 0.8, 0.8, 1.0),
-        specular =xyzw(0.5, 0.5, 0.5, 1.0),
-        direction=xyz(-0.577),
-    };
-
-    point_light = .{
-        position=xyz (0.0, 0.0, -10.0),
-        ambient =xyzw(0.3, 0.3, 0.3, 1.0),
-        diffuse =xyzw(0.7, 0.7, 0.7, 1.0),
-        specular=xyzw(0.5, 0.5, 0.5, 1.0),
-        att     =xyz (0.0, 1.0, 0.0),
-        range=25.0,
-    }; 
-
-    spot_light = .{
-        position =xyz(0.0, 0.0, -5.0),
-        direction=xyz(0.0, 0.0, 1.0),
-        ambient  =xyzw(0.0, 0.0, 0.0, 1.0),
-        diffuse  =xyzw(1.0),
-        specular =xyzw(1.0),
-        att      =xyz(0.0, 1.0, 0.0),
-        range=25.0,
-        spot =12.0,
-    };
-
-    // gpu_pixel_buffer= .{
-    //     directional_light=directional_light,
-    //     point_light      =point_light,
-    //     spot_light       =spot_light,
-    //     material         = .{ambient =xyzw(0.5, 0.5, 0.5, 1.0), diffuse =xyzw(1.0), specular=xyzw(0.5, 0.5, 0.5, 1.0)},
-    //     eye_position     = .{0.0, 0.0, -5.0},
-    // };
+    gpu_pixel_buffer.eye_position = .{0.0, 0.0, -5.0};
 
     texture_load_from_file(*gfx_device, *g_dirextx_texture, "resources/rock_wall_13_diff_4k.jpg");
 
