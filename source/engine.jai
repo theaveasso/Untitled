@@ -20,14 +20,14 @@ Engine :: struct {
 
     rasterizer_state : *ID3D11RasterizerState;
 
+    forward_lighting: Forward_Lighting;
+
     vertex_buffer : *ID3D11Buffer;
     index\_buffer : *ID3D11Buffer;
     drawcommand   : DrawCommand;
 
     loaded_meshes : Table(string, Skinned_Mesh);
-    current_mesh  : *Skinned_Mesh;
 
-    // 0 buffer_perframe
     constant_buffer: [4]*ID3D11Buffer;
 
     vertices_count : u32;
@@ -92,11 +92,6 @@ CBuffer_Perframe :: struct {
     projection2d: Matrix4;
 }
 
-CBuffer_Perframe3d :: struct {
-    view_matrix:        Matrix4;
-    projection_matrix:  Matrix4;
-}
-
 PS_Constant_Buffer :: struct{
     directional_light : Directional_Light;
     eye_position      : Vector3;
@@ -153,6 +148,8 @@ engine_resource_init :: (using engine : *Engine) -> bool {
     // indices_count  = xx box_mesh.indices.count;
     drawcommands_init(engine);
 
+    forward_lighting_init(*gfx_device, *forward_lighting);
+
     cbd : D3D11_BUFFER_DESC;
     cbd.Usage = .DYNAMIC;
     cbd.BindFlags = .CONSTANT_BUFFER;
@@ -162,7 +159,7 @@ engine_resource_init :: (using engine : *Engine) -> bool {
     cbd.ByteWidth = size_of(PS_Constant_Buffer);
     HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *cbd, null, *constant_buffer[1]));
 
-    cbd.ByteWidth = size_of(CBuffer_Perframe3d);
+    cbd.ByteWidth = size_of(Matrix4);
     HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *cbd, null, *constant_buffer[2]));
     cbd.ByteWidth = size_of(Matrix4);
     HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *cbd, null, *constant_buffer[3]));
@@ -197,7 +194,10 @@ engine_update  :: (using engine: *Engine) {
     gfx_set_shader(*gfx_device, *shader_mesh);
     gfx_set_projection(*gfx_device, constant_buffer[BUFFER_BINDING_CAMERA], *shader_mesh, *camera);
 
-    gfx_draw_mesh(*gfx_device, table_find_pointer(*loaded_meshes, "RiggedSimple"));
+    // forward lighting pass
+    foward_lighting_pass(*gfx_device, *forward_lighting);
+
+    gfx_draw_mesh(*gfx_device, table_find_pointer(*loaded_meshes, "Grayfish"));
 
     // engine_scene_update(*g_engine, 0.1667);
 
@@ -390,10 +390,11 @@ drawcommands_init :: (using engine: *Engine) {
 
 find_and_load_meshes :: inline (using engine: *Engine) {
     mesh : Skinned_Mesh;
-    loaded := mesh_load_from_file(*mesh, "resources/mesh/rigged_simple/RiggedSimple.gltf");
+
+    loaded := mesh_load_from_file(*mesh, "resources/mesh/grayfish.glb");
     if loaded {
         mesh_reset(*gfx_device, *mesh);
-        table_add(*loaded_meshes, copy_string("RiggedSimple"), mesh);
+        table_add(*loaded_meshes, copy_string("Grayfish"), mesh);
     } else {
         log_error("mesh_load_from_file");
     }

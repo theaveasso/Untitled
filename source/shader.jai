@@ -324,25 +324,35 @@ struct Vertex_Out {
 };
 
 cbuffer CBuffer_Perframe : register(b0) {
-    matrix g_View;
-    matrix g_Projection;
+    matrix g_ViewProj;
 };
 
 cbuffer CBuffer_World    : register(b1) {
     matrix g_World;
 };
 
+cbuffer CBuffer_Hemispheric : register(b2) {
+    float4 g_AmbientDown;
+    float4 g_AmbientRange;
+};
+
 Vertex_Out VS(Vertex_In vin) {
     Vertex_Out vout;
     vout.position  = mul(float4(vin.position, 1.0), g_World);
-    vout.position  = mul(vout.position, g_View);
-    vout.position  = mul(vout.position, g_Projection);
+    vout.position  = mul(vout.position, g_ViewProj);
     vout.normal    = vin.normal;
     return vout;
 }
 
+float4 ComputeHemisphereAmbient(float3 normal) {
+    float blend = saturate(normal.y * 0.5 + 0.5);
+    return mad(blend, g_AmbientRange, g_AmbientDown);
+}
+
 float4 PS(Vertex_Out pin) : SV_Target {
-    return float4(1.0, 1.0, 1.0, 1.0);
+
+    float4 ambient = ComputeHemisphereAmbient(normalize(pin.normal));
+    return ambient; 
 }
 
 HLSL

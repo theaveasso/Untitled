@@ -16,6 +16,7 @@ Camera :: struct {
     transform:=         Matrix4_Identity;
     view_matrix:=       Matrix4_Identity;
     projection_matrix:= Matrix4_Identity;
+    viewproj_matrix:=   Matrix4_Identity;
 }
 
 camera_update :: (using camera: *Camera, dt: float) {
@@ -51,4 +52,5 @@ camera_update :: (using camera: *Camera, dt: float) {
     if !success log_error("Unable to invert the transform update_flying_camera!");
 
     projection_matrix = make_projection_matrix(fov * PI / 180.0, aspect, 0.1, 1000.0, is_left_hand=true);
+    viewproj_matrix = projection_matrix * view_matrix;
 }

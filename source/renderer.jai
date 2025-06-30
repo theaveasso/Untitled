@@ -242,14 +242,9 @@ gfx_set_projection :: (using gfx_device: *Graphics_Device, projection: *ID3D11Bu
                        shader: *Shader, camera: *Camera) {
     ID3D11DeviceContext_VSSetConstantBuffers(d3d_context, 0, 1, *projection);
 
-    data := CBuffer_Perframe3d.{
-        view_matrix =camera.view_matrix,
-        projection_matrix =camera.projection_matrix,
-    };
-
     mapped_data : D3D11_MAPPED_SUBRESOURCE;
     HR(ID3D11DeviceContext_Map(d3d_context, projection, 0, .WRITE_DISCARD, 0, *mapped_data));
-    memcpy(mapped_data.pData, *data, size_of(CBuffer_Perframe3d));
+    memcpy(mapped_data.pData, *camera.viewproj_matrix, size_of(Matrix4));
     ID3D11DeviceContext_Unmap(d3d_context, projection, 0);
 }
 
@@ -358,6 +353,15 @@ gfx_draw_mesh :: (using gfx_device: *Graphics_Device,
     ID3D11DeviceContext_DrawIndexed(d3d_context, xx mesh.indices.count, 0, 0);
 }
 
+gfx_map_buffer :: (using gfx_device: *Graphics_Device,
+                   buffer: *ID3D11Buffer, data: *void, size: u32) {
+
+    mapped_data : D3D11_MAPPED_SUBRESOURCE;
+    HR(ID3D11DeviceContext_Map(d3d_context, buffer, 0, .WRITE_DISCARD, 0, *mapped_data));
+    memcpy(mapped_data.pData, data, size);
+    ID3D11DeviceContext_Unmap(d3d_context, buffer, 0);
+}
+
 #scope_file
 
 gfx_immediate_vertex_pointer :: inline (dc: *DrawCommand) -> *Immediate_Vertex {
@@ -374,6 +378,7 @@ gfx_put_vertex :: inline (using vertex: *Immediate_Vertex, p: Vector3, color: Ve
     uv0.x        = u;
     uv0.y        = v;
 }
+
 
 gfx_put_vertex :: inline (using vertex: *Immediate_Vertex, p: Vector3, color: Vector4, u: float, v: float, texture_handle: u32) {
     position     = p;
