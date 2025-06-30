@@ -258,6 +258,10 @@ input_per_frame_event_and_flag_update :: () {
     mouse_delta_z = 0;
 }
 
+is_key_down :: inline (key : Key_Code) -> bool {
+    return (input_button_states[cast(s64) key] & .DOWN) != 0;
+}
+
 #scope_module
 
 pending_moves:   [..] Window_Move_Record;

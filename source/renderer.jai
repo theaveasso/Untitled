@@ -11,7 +11,6 @@ Graphics_Device :: struct {
     depth_stencil_view      : *ID3D11DepthStencilView;
 
     viewport                : D3D11_VIEWPORT;
-
 }
 
 graphics_device_init :: (using rdsys : *Graphics_Device, hwnd : Window_Type, enable_4x_msaa : bool, quality_4x_msaa : *u32) -> bool {
@@ -239,7 +238,24 @@ gfx_set_projection2d :: (using gfx_device : *Graphics_Device,
     ID3D11DeviceContext_Unmap(d3d_context, projection, 0);
 }
 
+gfx_set_projection :: (using gfx_device: *Graphics_Device, projection: *ID3D11Buffer,
+                       shader: *Shader, camera: *Camera) {
+    ID3D11DeviceContext_VSSetConstantBuffers(d3d_context, 0, 1, *projection);
+
+    data := CBuffer_Perframe3d.{
+        view_matrix =camera.view_matrix,
+        projection_matrix =camera.projection_matrix,
+    };
+
+    mapped_data : D3D11_MAPPED_SUBRESOURCE;
+    HR(ID3D11DeviceContext_Map(d3d_context, projection, 0, .WRITE_DISCARD, 0, *mapped_data));
+    memcpy(mapped_data.pData, *data, size_of(CBuffer_Perframe3d));
+    ID3D11DeviceContext_Unmap(d3d_context, projection, 0);
+}
+
 gfx_set_shader :: (using gfx_device: *Graphics_Device, shader: *Shader) {
+    ID3D11DeviceContext_IASetInputLayout(gfx_device.d3d_context, shader.vertex_layout);
+
     ID3D11DeviceContext_VSSetShader(d3d_context, shader.vertex_shader, null, 0);
     ID3D11DeviceContext_PSSetShader(d3d_context, shader.pixel_shader, null, 0);
 }
@@ -314,6 +330,32 @@ gfx_draw_quad :: (gfx_device: *Graphics_Device, dc: *DrawCommand,
 
     dc.num_vertices += 4;
     dc.num_indices  += 6;
+}
+
+gfx_draw_mesh :: (using gfx_device: *Graphics_Device, 
+                  mesh: *Skinned_Mesh, world:= Matrix4_Identity) {
+
+    stride : u32 = size_of(Mesh_Vertex);
+    offset : u32 = 0; 
+    ID3D11DeviceContext_IASetVertexBuffers(d3d_context, 0, 1, *mesh.vertex_buffer, *stride, *offset);
+    ID3D11DeviceContext_IASetIndexBuffer(d3d_context, mesh.index_buffer, .R32_UINT, 0);
+
+    ID3D11DeviceContext_VSSetConstantBuffers(d3d_context, 1, 1, *mesh.world_buffer);
+
+    mapped_data : D3D11_MAPPED_SUBRESOURCE;
+    HR(ID3D11DeviceContext_Map(d3d_context, mesh.vertex_buffer, 0, .WRITE_DISCARD, 0, *mapped_data));
+    memcpy(mapped_data.pData, mesh.vertices.data, size_of(Mesh_Vertex) * cast(u32) mesh.vertices.count);
+    ID3D11DeviceContext_Unmap(d3d_context, mesh.vertex_buffer, 0);
+
+    HR(ID3D11DeviceContext_Map(d3d_context, mesh.index_buffer, 0, .WRITE_DISCARD, 0, *mapped_data));
+    memcpy(mapped_data.pData, mesh.indices.data, size_of(u32) * cast(u32) mesh.indices.count);
+    ID3D11DeviceContext_Unmap(d3d_context, mesh.index_buffer, 0);
+
+    HR(ID3D11DeviceContext_Map(d3d_context, mesh.world_buffer, 0, .WRITE_DISCARD, 0, *mapped_data));
+    memcpy(mapped_data.pData, *world, size_of(Matrix4));
+    ID3D11DeviceContext_Unmap(d3d_context, mesh.world_buffer, 0);
+
+    ID3D11DeviceContext_DrawIndexed(d3d_context, xx mesh.indices.count, 0, 0);
 }
 
 #scope_file

@@ -27,11 +27,12 @@ ImTextureData   :: IMGUI.ImTextureData;
 #load "renderer.jai";
 #load "light.jai";
 #load "shader.jai";
+#load "mesh.jai";
+#load "camera.jai";
+#load "math.jai";
 
 #load "texture.jai";
 #load "bitmap.jai";
-
-
 
 ASSERT_ON_FAIL  :: true;
 BREAK_ON_ERROR  :: false; 
@@ -240,5 +241,3 @@ get_image_bytes_per_block :: (tf: Texture_Format) -> int {
     
     return 0;
 }
-
- 

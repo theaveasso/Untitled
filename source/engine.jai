@@ -1,4 +1,7 @@
 MAX_SPRITES :: 1024;
+MAX_MESH    :: 256;
+
+BUFFER_BINDING_CAMERA :: 2;
 
 Engine :: struct {
     screen_width, screen_height : u32;
@@ -11,9 +14,9 @@ Engine :: struct {
     enable\_4x_msaa : bool;
     quality_4x_msaa : u32;
 
-
-    hwnd     : Window_Type;
-    gfx_device : Graphics_Device;
+    hwnd:       Window_Type;
+    gfx_device: Graphics_Device;
+    camera:     Camera; 
 
     rasterizer_state : *ID3D11RasterizerState;
 
@@ -21,8 +24,11 @@ Engine :: struct {
     index\_buffer : *ID3D11Buffer;
     drawcommand   : DrawCommand;
 
+    loaded_meshes : Table(string, Skinned_Mesh);
+    current_mesh  : *Skinned_Mesh;
+
     // 0 buffer_perframe
-    constant_buffer: [2]*ID3D11Buffer;
+    constant_buffer: [4]*ID3D11Buffer;
 
     vertices_count : u32;
     indices\_count : u32;
@@ -35,6 +41,7 @@ Engine :: struct {
 
     shader_sprite : Shader;
     shader_text   : Shader;
+    shader_mesh   : Shader;
 }
 
 g_dirextx_texture : Texture;
@@ -66,6 +73,14 @@ immediate_vertex_input_layout :[]D3D11_INPUT_ELEMENT_DESC = .[
     .{"TEXTURE_ID",0, .R32_FLOAT,          0, 48, .VERTEX_DATA, 0},
 ];
 
+mesh_vertex_input_layout :[]D3D11_INPUT_ELEMENT_DESC = .[
+    .{"POSITION",  0, .R32G32B32_FLOAT,    0,  0, .VERTEX_DATA, 0},
+    .{"NORMAL",    0, .R32G32B32_FLOAT,    0, 12, .VERTEX_DATA, 0}
+    // .{"COLOR",     0, .R32G32B32A32_FLOAT, 0, 24, .VERTEX_DATA, 0},
+    // .{"TEXCOORD",  0, .R32G32_FLOAT,       0, 28, .VERTEX_DATA, 0},
+    // .{"TEXTURE_ID",0, .R32_FLOAT,          0, 48, .VERTEX_DATA, 0},
+];
+
 Material :: struct {
     ambient : Vector4;
     diffuse : Vector4;
@@ -75,6 +90,11 @@ Material :: struct {
 
 CBuffer_Perframe :: struct {
     projection2d: Matrix4;
+}
+
+CBuffer_Perframe3d :: struct {
+    view_matrix:        Matrix4;
+    projection_matrix:  Matrix4;
 }
 
 PS_Constant_Buffer :: struct{
@@ -107,14 +127,21 @@ engine_init    :: (using engine : *Engine) -> bool {
     ID3D11Device_CreateRasterizerState(gfx_device.d3d_device, *raster_desc, *rasterizer_state);
     ID3D11DeviceContext_RSSetState(gfx_device.d3d_context, rasterizer_state);
 
-    gfx_set_shader(*gfx_device, *shader_sprite);
-    gfx_set_projection2d(*gfx_device, constant_buffer[0], xx screen_width, xx screen_height);
+    // gfx_set_shader(*gfx_device, *shader_sprite);
+    // gfx_set_projection2d(*gfx_device, constant_buffer[0], xx screen_width, xx screen_height);
+
+    camera.position = xyz(1, 1.3, -20);
+    camera.euler_angles.x = -20 * PI / 180.0;
+    camera.euler_angles.y =  10 * PI / 180.0;
+    camera.aspect = cast(float) screen_width / screen_height;
 
     return success;
 }
 
 engine_effect_init :: (using engine : *Engine) -> bool {
-    success := shader_init(*gfx_device, *shader_sprite, SHADER_SPRITE, "VS", "PS");
+    success: bool;
+    success = shader_init(*gfx_device, *shader_mesh,   SHADER_MESH, "VS", "PS", *mesh_vertex_input_layout);
+    success = shader_init(*gfx_device, *shader_sprite, SHADER_SPRITE, "VS", "PS", *immediate_vertex_input_layout);
 
     return success;
 }
@@ -135,9 +162,16 @@ engine_resource_init :: (using engine : *Engine) -> bool {
     cbd.ByteWidth = size_of(PS_Constant_Buffer);
     HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *cbd, null, *constant_buffer[1]));
 
+    cbd.ByteWidth = size_of(CBuffer_Perframe3d);
+    HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *cbd, null, *constant_buffer[2]));
+    cbd.ByteWidth = size_of(Matrix4);
+    HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *cbd, null, *constant_buffer[3]));
+
     gpu_pixel_buffer.eye_position = .{0.0, 0.0, -5.0};
 
     texture_load_from_file(*gfx_device, *g_dirextx_texture, "resources/rock_wall_13_diff_4k.jpg");
+
+    find_and_load_meshes(engine);
 
     ID3D11DeviceContext_IASetPrimitiveTopology(gfx_device.d3d_context, .TRIANGLELIST);
 
@@ -146,6 +180,9 @@ engine_resource_init :: (using engine : *Engine) -> bool {
 
     ID3D11DeviceContext_PSSetShader(gfx_device.d3d_context, shader_sprite.pixel_shader, null, 0);
     ID3D11DeviceContext_PSSetConstantBuffers(gfx_device.d3d_context, 1, 1, *constant_buffer[1]);
+
+    ID3D11DeviceContext_VSSetShader(gfx_device.d3d_context, shader_mesh.vertex_shader, null, 0);
+    ID3D11DeviceContext_PSSetConstantBuffers(gfx_device.d3d_context, 0, 1, *constant_buffer[2]);
 
     return true;
 }
@@ -156,17 +193,26 @@ engine_update  :: (using engine: *Engine) {
     IMGUI.NewFrame();
 
     renderer_clear(*g_engine.gfx_device);
+    camera_update(*camera, 0.01667);
+    gfx_set_shader(*gfx_device, *shader_mesh);
+    gfx_set_projection(*gfx_device, constant_buffer[BUFFER_BINDING_CAMERA], *shader_mesh, *camera);
+
+    gfx_draw_mesh(*gfx_device, table_find_pointer(*loaded_meshes, "RiggedSimple"));
 
     // engine_scene_update(*g_engine, 0.1667);
 
-    gfx_set_texture(*gfx_device, *shader_sprite, *g_dirextx_texture);
-    gfx_draw_quad(*gfx_device, *drawcommand, 0, 0, 100, 100);
-    gfx_draw_quad(*gfx_device, *drawcommand, 100, 0, 100, 100, .{1.0, 0.0, 0.0, 1.0});
-    gfx_draw_quad(*gfx_device, *drawcommand, 200, 0, 100, 100, .{0.0, 1.0, 0.0, 1.0});
-    gfx_draw_quad(*gfx_device, *drawcommand, 300, 0, 100, 100, .{0.0, 0.0, 1.0, 1.0});
-    gfx_draw_quad(*gfx_device, *drawcommand, .{400, 0, 100, 100}, 1);
+    // gfx_set_shader(*gfx_device, *shader_sprite);
+    // gfx_set_projection2d(*gfx_device, constant_buffer[0], xx screen_width, xx screen_height);
+    // gfx_set_texture(*gfx_device, *shader_sprite, *g_dirextx_texture);
+    // gfx_draw_quad(*gfx_device, *drawcommand, 0, 0, 100, 100);
+    // gfx_draw_quad(*gfx_device, *drawcommand, 100, 0, 100, 100, .{1.0, 0.0, 0.0, 1.0});
+    // gfx_draw_quad(*gfx_device, *drawcommand, 200, 0, 100, 100, .{0.0, 1.0, 0.0, 1.0});
+    // gfx_draw_quad(*gfx_device, *drawcommand, 300, 0, 100, 100, .{0.0, 0.0, 1.0, 1.0});
+    // gfx_draw_quad(*gfx_device, *drawcommand, .{400, 0, 100, 100}, 1);
 
-    gfx_flush(*gfx_device, *drawcommand);
+    // gfx_flush(*gfx_device, *drawcommand);
+
+    // gfx_set_shader(*gfx_device, *shader_mesh);
 
     IMGUI.Render();
     ImplDX11_RenderDrawData(IMGUI.GetDrawData());
@@ -257,16 +303,6 @@ engine_scene_update :: (using engine : *Engine, dt : float) {
                 IMGUI.ColorEdit3("Ambient",  *gpu_pixel_buffer.directional_light.ambient.xyz);
                 IMGUI.ColorEdit3("Diffuse",  *gpu_pixel_buffer.directional_light.diffuse.xyz);
                 IMGUI.ColorEdit3("Specular", *gpu_pixel_buffer.directional_light.specular.xyz);
-            // case 1;
-            //     IMGUI.ColorEdit3("Ambient",  *gpu_pixel_buffer.point_light.ambient.xyz);
-            //     IMGUI.ColorEdit3("Diffuse",  *gpu_pixel_buffer.point_light.diffuse.xyz);
-            //     IMGUI.ColorEdit3("Specular", *gpu_pixel_buffer.point_light.specular.xyz);
-            //     IMGUI.InputFloat("Range",    *gpu_pixel_buffer.point_light.range);
-            //     IMGUI.InputFloat3("Range",   *gpu_pixel_buffer.point_light.att);
-            // case 2;
-            //     IMGUI.ColorEdit3("Ambient",  *gpu_pixel_buffer.spot_light.ambient.xyz);
-            //     IMGUI.ColorEdit3("Diffuse",  *gpu_pixel_buffer.spot_light.diffuse.xyz);
-            //     IMGUI.ColorEdit3("Specular", *gpu_pixel_buffer.spot_light.specular.xyz);
         }
         IMGUI.PopID();
 
@@ -350,4 +386,15 @@ drawcommands_init :: (using engine: *Engine) {
 
     D3D11SetDebugObjectName(gfx_device.d3d_device, vertex_buffer, "DrawCommand_VertexBuffer");
     D3D11SetDebugObjectName(gfx_device.d3d_device, index\_buffer, "DrawCommand_IndexBuffer");
+}
+
+find_and_load_meshes :: inline (using engine: *Engine) {
+    mesh : Skinned_Mesh;
+    loaded := mesh_load_from_file(*mesh, "resources/mesh/rigged_simple/RiggedSimple.gltf");
+    if loaded {
+        mesh_reset(*gfx_device, *mesh);
+        table_add(*loaded_meshes, copy_string("RiggedSimple"), mesh);
+    } else {
+        log_error("mesh_load_from_file");
+    }
 }

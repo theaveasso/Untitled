@@ -1593,7 +1593,7 @@ get :: (json_val     : JSON_Value,
   assert(json_val.type == .OBJECT);
 
   table := json_val.object;
-  val, success := table_find(table, key);
+  success, val := table_find_new(table, key);
 
   // Default value when value was not found.
   if !success {
@@ -1630,4 +1630,4 @@ crash :: (msg: string, args: ..Any) {
 #import "Hash_Table";
 #import "Math";
 
-#import, dir "modules/jaison";
+#import, dir "../jaison";

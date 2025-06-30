@@ -7,15 +7,14 @@ Shader :: struct {
 }
 
 shader_init :: (gfx_device : *Graphics_Device, 
-                using shader : *Shader, source : string, vertex_entrypoint: string, pixel_entrypoint: string) -> bool {
+                using shader : *Shader, source : string, vertex_entrypoint: string, pixel_entrypoint: string, input_layout: *[]D3D11_INPUT_ELEMENT_DESC) -> bool {
 
     vs := compile_shader(source, vertex_entrypoint, "vs_5_0");
     defer free(vs);
     assert(vs.data != null);
     HR(ID3D11Device_CreateVertexShader(gfx_device.d3d_device, vs.data, cast(u64) vs.count, null, *vertex_shader));
 
-    HR(ID3D11Device_CreateInputLayout(gfx_device.d3d_device, immediate_vertex_input_layout.data, cast(u32) immediate_vertex_input_layout.count, vs.data, cast(u64) vs.count, *vertex_layout));
-    ID3D11DeviceContext_IASetInputLayout(gfx_device.d3d_context, vertex_layout);
+    HR(ID3D11Device_CreateInputLayout(gfx_device.d3d_device, input_layout.data, cast(u32) input_layout.count, vs.data, cast(u64) vs.count, *vertex_layout));
 
     ps := compile_shader(source, pixel_entrypoint, "ps_5_0");
     defer free(ps);
@@ -305,6 +304,45 @@ Vertex_Out VS(Vertex_In vin) {
 float4 PS(Vertex_Out pin) : SV_Target {
     if (pin.texture_id == 1.0) return g_Texture0.Sample(g_Sampler0, pin.texcoord) * pin.color;
     else return pin.color;
+}
+
+HLSL
+
+SHADER_MESH :: #string HLSL
+
+struct Vertex_In {
+    float3 position     : POSITION;
+    float3 normal       : NORMAL;
+};
+
+// float4 joints       : JOINTS; 
+// float4 weights      : WEIGHTS;
+
+struct Vertex_Out {
+    float4 position:    SV_Position;
+    float3 normal:      NORMAL;
+};
+
+cbuffer CBuffer_Perframe : register(b0) {
+    matrix g_View;
+    matrix g_Projection;
+};
+
+cbuffer CBuffer_World    : register(b1) {
+    matrix g_World;
+};
+
+Vertex_Out VS(Vertex_In vin) {
+    Vertex_Out vout;
+    vout.position  = mul(float4(vin.position, 1.0), g_World);
+    vout.position  = mul(vout.position, g_View);
+    vout.position  = mul(vout.position, g_Projection);
+    vout.normal    = vin.normal;
+    return vout;
+}
+
+float4 PS(Vertex_Out pin) : SV_Target {
+    return float4(1.0, 1.0, 1.0, 1.0);
 }
 
 HLSL
