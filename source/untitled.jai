@@ -15,6 +15,7 @@ main :: () {
     ok_or_exit(engine_init(*g_engine), "Engine Initialize failed.");
 
     while !g_should_quit {
+        reset_temporary_storage();
         update_window_events();
         for events_this_frame {
             if it.type == .QUIT then g_should_quit = true;
@@ -23,7 +24,7 @@ main :: () {
             }
         }
 
-        engine_update();
+        engine_update(*g_engine);
     }
 }
 

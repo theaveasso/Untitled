@@ -1,3 +1,5 @@
+MAX_SPRITES :: 1024;
+
 Engine :: struct {
     screen_width, screen_height : u32;
 
@@ -17,7 +19,10 @@ Engine :: struct {
 
     vertex_buffer : *ID3D11Buffer;
     index\_buffer : *ID3D11Buffer;
-    constant_buffer: [4]*ID3D11Buffer;
+    drawcommand   : DrawCommand;
+
+    // 0 buffer_perframe
+    constant_buffer: [2]*ID3D11Buffer;
 
     vertices_count : u32;
     indices\_count : u32;
@@ -26,7 +31,6 @@ Engine :: struct {
     point\     _light : Point_Light;
     spot\      _light : Spot_Light;  
 
-    gpu_vertex_buffer : VS_Constant_Buffer;
     gpu_pixel\_buffer : PS_Constant_Buffer;
 
     shader_sprite : Shader;
@@ -34,11 +38,23 @@ Engine :: struct {
 
 g_dirextx_texture : Texture;
 
+DrawCommand :: struct {
+    vertex_buffer: *ID3D11Buffer;
+    index_buffer:  *ID3D11Buffer;
+
+    num_vertices: s32;
+    num_indices: s32;
+
+    vertices: [MAX_SPRITES*4]Immediate_Vertex;
+    indices:  [MAX_SPRITES*6]u32;
+}
+
 Immediate_Vertex :: struct {
     position:    Vector3;
     color_scale: Vector4;
     uv0:         Vector2;
     normal:      Vector3;
+    texture_id:  float;
 }
 
 immediate_vertex_input_layout :[]D3D11_INPUT_ELEMENT_DESC = .[
@@ -46,6 +62,7 @@ immediate_vertex_input_layout :[]D3D11_INPUT_ELEMENT_DESC = .[
     .{"COLOR",     0, .R32G32B32A32_FLOAT, 0, 12, .VERTEX_DATA, 0},
     .{"TEXCOORD",  0, .R32G32_FLOAT,       0, 28, .VERTEX_DATA, 0},
     .{"NORMAL",    0, .R32G32B32_FLOAT,    0, 36, .VERTEX_DATA, 0},
+    .{"TEXTURE_ID",0, .R32_FLOAT,          0, 48, .VERTEX_DATA, 0},
 ];
 
 Material :: struct {
@@ -55,11 +72,8 @@ Material :: struct {
     reflect : Vector4;
 }
 
-VS_Constant_Buffer :: struct {
-    model   : Matrix4;
-    view    : Matrix4;
-    proj    : Matrix4;
-    world_inv: Matrix4;
+CBuffer_Perframe :: struct {
+    projection2d: Matrix4;
 }
 
 PS_Constant_Buffer :: struct{
@@ -70,6 +84,9 @@ PS_Constant_Buffer :: struct{
 
 engine_init    :: (using engine : *Engine) -> bool {
     success := false;
+
+    screen_width = xx g_window_width;
+    screen_height = xx g_window_height;
 
     hwnd = create_window(g_window_width, g_window_height, "Untitled", wanted_msaa=WANTED_MSAA, background_color_rgb=.[0, 0, 0]);
     success = hwnd != null;
@@ -89,26 +106,30 @@ engine_init    :: (using engine : *Engine) -> bool {
     ID3D11Device_CreateRasterizerState(gfx_device.d3d_device, *raster_desc, *rasterizer_state);
     ID3D11DeviceContext_RSSetState(gfx_device.d3d_context, rasterizer_state);
 
+    gfx_set_shader(*gfx_device, *shader_sprite);
+    gfx_set_projection2d(*gfx_device, constant_buffer[0], xx screen_width, xx screen_height);
+
     return success;
 }
 
 engine_effect_init :: (using engine : *Engine) -> bool {
-    success := shader_init(*gfx_device, *shader_sprite, SHADER_TEXT, "VS", "PS");
+    success := shader_init(*gfx_device, *shader_sprite, SHADER_SPRITE, "VS", "PS");
 
     return success;
 }
 
 engine_resource_init :: (using engine : *Engine) -> bool {
     box_mesh := make_box(2, 2, 2);
-    geometry_mesh_reset(*gfx_device, *box_mesh, vertex_buffer, index_buffer);
-    vertices_count = xx box_mesh.vertices.count;
-    indices_count  = xx box_mesh.indices.count;
+    // geometry_mesh_reset(*gfx_device, *box_mesh, vertex_buffer, index_buffer);
+    // vertices_count = xx box_mesh.vertices.count;
+    // indices_count  = xx box_mesh.indices.count;
+    drawcommands_init(engine);
 
     cbd : D3D11_BUFFER_DESC;
     cbd.Usage = .DYNAMIC;
     cbd.BindFlags = .CONSTANT_BUFFER;
     cbd.CPUAccessFlags = .WRITE;
-    cbd.ByteWidth = size_of(VS_Constant_Buffer);
+    cbd.ByteWidth = size_of(CBuffer_Perframe);
     HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *cbd, null, *constant_buffer[0]));
     cbd.ByteWidth = size_of(PS_Constant_Buffer);
     HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *cbd, null, *constant_buffer[1]));
@@ -128,20 +149,27 @@ engine_resource_init :: (using engine : *Engine) -> bool {
     return true;
 }
 
-engine_update  :: () {
+engine_update  :: (using engine: *Engine) {
     ImplDX11_NewFrame();
     ImplWin32_NewFrame();
     IMGUI.NewFrame();
 
     renderer_clear(*g_engine.gfx_device);
 
-    engine_scene_update(*g_engine, 0.1667);
+    // engine_scene_update(*g_engine, 0.1667);
 
-    using g_engine.gfx_device;
+    gfx_set_texture(*gfx_device, *shader_sprite, *g_dirextx_texture);
+    gfx_draw_quad(*gfx_device, *drawcommand, 0, 0, 100, 100);
+    gfx_draw_quad(*gfx_device, *drawcommand, 100, 0, 100, 100, .{1.0, 0.0, 0.0, 1.0});
+    gfx_draw_quad(*gfx_device, *drawcommand, 200, 0, 100, 100, .{0.0, 1.0, 0.0, 1.0});
+    gfx_draw_quad(*gfx_device, *drawcommand, 300, 0, 100, 100, .{0.0, 0.0, 1.0, 1.0});
+    gfx_draw_quad(*gfx_device, *drawcommand, .{400, 0, 100, 100}, 1);
+
+    gfx_flush(*gfx_device, *drawcommand);
 
     IMGUI.Render();
     ImplDX11_RenderDrawData(IMGUI.GetDrawData());
-    renderer_present(*g_engine.gfx_device);
+    renderer_present(*gfx_device);
 }
 
 #scope_file
@@ -257,23 +285,6 @@ engine_scene_update :: (using engine : *Engine, dt : float) {
     using g_engine.gfx_device;
 
     mapped_data : D3D11_MAPPED_SUBRESOURCE;
-
-    box_transforms : [..]Matrix4;
-    array_add(*box_transforms, translate(Matrix4_Identity, .{0, 0, 5}) * rotation_matrix(Matrix4, rotation) * make_scale_matrix4(xyz(0.1)));
-    array_add(*box_transforms, translate(Matrix4_Identity, .{1, 1, 5}) * rotation_matrix(Matrix4, rotation) * make_scale_matrix4(xyz(0.5)));
-    array_add(*box_transforms, translate(Matrix4_Identity, .{0, 2, 7}) * rotation_matrix(Matrix4, rotation) * make_scale_matrix4(xyz(0.4)));
-    array_add(*box_transforms, translate(Matrix4_Identity, .{1, 0, 8}) * rotation_matrix(Matrix4, rotation) * make_scale_matrix4(xyz(0.3)));
-    array_add(*box_transforms, translate(Matrix4_Identity, .{0, 0, 9}) * rotation_matrix(Matrix4, -rotation) * make_scale_matrix4(xyz(0.3)));
-
-    for box_transforms {
-        cb := VS_Constant_Buffer.{model=transpose(it), view=transpose(view), proj=transpose(proj)};
-        HR(ID3D11DeviceContext_Map(d3d_context, g_engine.constant_buffer[0], 0, .WRITE_DISCARD, 0, *mapped_data));
-        memcpy(mapped_data.pData, *cb, size_of(VS_Constant_Buffer));
-        ID3D11DeviceContext_Unmap(d3d_context, g_engine.constant_buffer[0], 0);
-
-        ID3D11DeviceContext_DrawIndexed(d3d_context, g_engine.indices_count, 0, 0);
-    }
-
     HR(ID3D11DeviceContext_Map(d3d_context, g_engine.constant_buffer[1], 0, .WRITE_DISCARD, 0, *mapped_data));
     memcpy(mapped_data.pData, *gpu_pixel_buffer, size_of(PS_Constant_Buffer));
     ID3D11DeviceContext_Unmap(d3d_context, g_engine.constant_buffer[1], 0);
@@ -281,15 +292,6 @@ engine_scene_update :: (using engine : *Engine, dt : float) {
     // Pixel shader set texture and sampler
     ID3D11DeviceContext_PSSetShaderResources(d3d_context, 0, 1, *g_dirextx_texture.image_view);
     ID3D11DeviceContext_PSSetSamplers(d3d_context, 0, 1, *shader_sprite.sampler_state);
-}
-
-engine_draw2d  :: (engine : *Engine) {
-}
-
-engine_draw3d  :: () {
-}
-
-engine_postupdate :: () {
 }
 
 geometry_mesh_reset :: (using gfx_device : *Graphics_Device, mesh_data : *Mesh_Data($T), vertex_buffer : *ID3D11Buffer, index_buffer : *ID3D11Buffer) {
@@ -327,5 +329,24 @@ geometry_mesh_reset :: (using gfx_device : *Graphics_Device, mesh_data : *Mesh_D
     D3D11SetDebugObjectName(d3d_device, index\_buffer, "IndexBuffer");
 }
 
-immediate_set_shader :: (gfx_device : *Graphics_Device, shader : *Shader) {
+#scope_file
+drawcommands_init :: (using engine: *Engine) {
+    vbd : D3D11_BUFFER_DESC;
+    vbd.Usage = .DYNAMIC;
+    vbd.ByteWidth = cast(u32) (size_of(Immediate_Vertex) * MAX_SPRITES * 4);
+    vbd.BindFlags = .VERTEX_BUFFER;
+    vbd.CPUAccessFlags = .WRITE;
+
+    HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *vbd, null, *drawcommand.vertex_buffer));
+
+    ibd : D3D11_BUFFER_DESC;
+    ibd.Usage = .DYNAMIC;
+    ibd.ByteWidth = cast(u32) (size_of(u32) * MAX_SPRITES * 6);
+    ibd.BindFlags = .INDEX_BUFFER;
+    ibd.CPUAccessFlags = .WRITE;
+
+    HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *ibd, null, *drawcommand.index_buffer));
+
+    D3D11SetDebugObjectName(gfx_device.d3d_device, vertex_buffer, "DrawCommand_VertexBuffer");
+    D3D11SetDebugObjectName(gfx_device.d3d_device, index\_buffer, "DrawCommand_IndexBuffer");
 }

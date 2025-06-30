@@ -226,3 +226,129 @@ renderer_resize :: (using rdsys : *Graphics_Device, width : int, height : int, e
     HR(ID3D11Device_CreateTexture2D(d3d_device, *depth_stencil_desc, null, *depth_stencil_buffer));
     HR(ID3D11Device_CreateDepthStencilView(d3d_device, depth_stencil_buffer, null, *depth_stencil_view));
 }
+
+gfx_set_projection2d :: (using gfx_device : *Graphics_Device, 
+                         projection: *ID3D11Buffer, render_target_width: float, render_target_height: float) {
+    data := CBuffer_Perframe.{
+        projection2d=orthographic_projection_matrix(0, render_target_width*1, render_target_height, 0, -1.0, 1.0)
+    };
+
+    print("data projection %\n", data);
+
+    mapped_data : D3D11_MAPPED_SUBRESOURCE;
+    HR(ID3D11DeviceContext_Map(d3d_context, projection, 0, .WRITE_DISCARD, 0, *mapped_data));
+    memcpy(mapped_data.pData, *data, size_of(CBuffer_Perframe));
+    ID3D11DeviceContext_Unmap(d3d_context, projection, 0);
+}
+
+gfx_set_shader :: (using gfx_device: *Graphics_Device, shader: *Shader) {
+    ID3D11DeviceContext_VSSetShader(d3d_context, shader.vertex_shader, null, 0);
+    ID3D11DeviceContext_PSSetShader(d3d_context, shader.pixel_shader, null, 0);
+}
+
+gfx_set_texture :: (using gfx_device: *Graphics_Device, shader: *Shader, texture: *Texture) {
+    gfx_set_shader(gfx_device, shader);
+
+    ID3D11DeviceContext_PSSetShaderResources(d3d_context, 0, 1, *texture.image_view);
+    ID3D11DeviceContext_PSSetSamplers(d3d_context, 0, 1, *shader.sampler_state);
+}
+
+gfx_flush :: (using gfx_device: *Graphics_Device, dc: *DrawCommand) {
+    stride : u32 = size_of(Immediate_Vertex);
+    offset : u32 = 0; 
+    ID3D11DeviceContext_IASetVertexBuffers(d3d_context, 0, 1, *dc.vertex_buffer, *stride, *offset);
+    ID3D11DeviceContext_IASetIndexBuffer(d3d_context, dc.index_buffer, .R32_UINT, 0);
+
+    mapped_data : D3D11_MAPPED_SUBRESOURCE;
+    HR(ID3D11DeviceContext_Map(d3d_context, dc.vertex_buffer, 0, .WRITE_DISCARD, 0, *mapped_data));
+    memcpy(mapped_data.pData, *dc.vertices, size_of(Immediate_Vertex) * dc.num_vertices);
+    ID3D11DeviceContext_Unmap(d3d_context, dc.vertex_buffer, 0);
+
+    mapped_data1 : D3D11_MAPPED_SUBRESOURCE;
+    HR(ID3D11DeviceContext_Map(d3d_context, dc.index_buffer, 0, .WRITE_DISCARD, 0, *mapped_data1));
+    memcpy(mapped_data1.pData, *dc.indices, size_of(u32) * dc.num_indices);
+    ID3D11DeviceContext_Unmap(d3d_context, dc.index_buffer, 0);
+
+    ID3D11DeviceContext_DrawIndexed(d3d_context, xx dc.num_indices, 0, 0);
+    dc.num_vertices = 0;
+    dc.num_indices  = 0;
+}
+
+gfx_draw_quad :: (gfx_device: *Graphics_Device, dc: *DrawCommand,
+                  x: float, y: float, width: float, height: float, tint:= Vector4.{1.0, 1.0, 1.0, 1.0}) {
+
+    CheckVerticesSpace(4, dc);
+    gfx_put_vertex(*v[0], .{x, y, 0.0},         tint, 0.0, 1.0);
+    gfx_put_vertex(*v[1], .{x+width, y, 0.0},   tint, 1.0, 0.0);
+    gfx_put_vertex(*v[2], .{x+width, y+height, 0.0}, tint, 1.0, 1.0);
+    gfx_put_vertex(*v[3], .{x, y+height, 0.0},  tint, 0.0, 1.0);
+
+    CheckIndicesSpace(6, dc);
+    i[0] = cast(u32) dc.num_vertices + 0;
+    i[1] = cast(u32) dc.num_vertices + 1;
+    i[2] = cast(u32) dc.num_vertices + 2;
+
+    i[3] = cast(u32) dc.num_vertices + 2;
+    i[4] = cast(u32) dc.num_vertices + 3;
+    i[5] = cast(u32) dc.num_vertices + 0;
+
+    dc.num_vertices += 4;
+    dc.num_indices  += 6;
+}
+
+gfx_draw_quad :: (gfx_device: *Graphics_Device, dc: *DrawCommand,
+                  using source: Vector4, texture_handle : u32, tint:= Vector4.{1.0, 1.0, 1.0, 1.0}) {
+
+    CheckVerticesSpace(4, dc);
+    gfx_put_vertex(*v[0], .{x, y, 0.0},     tint, 0.0, 0.0, texture_handle);
+    gfx_put_vertex(*v[1], .{x+z, y, 0.0},   tint, 1.0, 0.0, texture_handle);
+    gfx_put_vertex(*v[2], .{x+z, y+w, 0.0}, tint, 1.0, 1.0, texture_handle);
+    gfx_put_vertex(*v[3], .{x, y+w, 0.0},   tint, 0.0, 1.0, texture_handle);
+
+    CheckIndicesSpace(6, dc);
+    i[0] = cast(u32) dc.num_vertices + 0;
+    i[1] = cast(u32) dc.num_vertices + 1;
+    i[2] = cast(u32) dc.num_vertices + 2;
+
+    i[3] = cast(u32) dc.num_vertices + 2;
+    i[4] = cast(u32) dc.num_vertices + 3;
+    i[5] = cast(u32) dc.num_vertices + 0;
+
+    dc.num_vertices += 4;
+    dc.num_indices  += 6;
+}
+
+#scope_file
+
+gfx_immediate_vertex_pointer :: inline (dc: *DrawCommand) -> *Immediate_Vertex {
+    return dc.vertices.data + dc.num_vertices;
+}
+gfx_index_pointer :: inline (dc: *DrawCommand) -> *u32 {
+    return dc.indices.data + dc.num_indices;
+}
+
+gfx_put_vertex :: inline (using vertex: *Immediate_Vertex, p: Vector3, color: Vector4, u: float, v: float) {
+    position     = p;
+    color_scale  = color;
+    normal       = .{z=1};
+    uv0.x        = u;
+    uv0.y        = v;
+}
+
+gfx_put_vertex :: inline (using vertex: *Immediate_Vertex, p: Vector3, color: Vector4, u: float, v: float, texture_handle: u32) {
+    position     = p;
+    color_scale  = color;
+    normal       = .{z=1};
+    uv0.x        = u;
+    uv0.y        = v;
+    texture_id   = cast(float) texture_handle;
+}
+
+
+CheckVerticesSpace :: (n: s32, dc: *DrawCommand) #expand {
+    `v := gfx_immediate_vertex_pointer(dc);
+}
+
+CheckIndicesSpace :: (n: s32, dc: *DrawCommand) #expand {
+    `i := gfx_index_pointer(dc);
+}

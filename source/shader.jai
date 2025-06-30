@@ -18,7 +18,7 @@ shader_init :: (gfx_device : *Graphics_Device,
     ID3D11DeviceContext_IASetInputLayout(gfx_device.d3d_context, vertex_layout);
 
     ps := compile_shader(source, pixel_entrypoint, "ps_5_0");
-    defer free(vs);
+    defer free(ps);
     assert(ps.data != null);
     HR(ID3D11Device_CreatePixelShader(gfx_device.d3d_device, ps.data, cast(u64) ps.count, null, *pixel_shader));
 
@@ -266,6 +266,45 @@ float4 PS(Vertex_Out p_in) : SV_Target {
     // apply light
     lit_color *= (ambient + diffuse) + spec;
     return lit_color;
+}
+HLSL
+
+SHADER_SPRITE :: #string HLSL
+
+struct Vertex_In {
+    float3 position     : POSITION;
+    float4 color_scale  : COLOR; 
+    float2 uv0          : TEXCOORD; 
+    float3 normal       : NORMAL;
+    float  texture_id   : TEXTURE_ID;
+};
+
+struct Vertex_Out {
+    float4 position:    SV_Position;
+    float4 color:       COLOR;
+    float2 texcoord:    TEXCOORD;
+    float  texture_id:  TEXTURE_ID;
+};
+
+cbuffer CBuffer_Perframe : register(b0) {
+    matrix g_Projection2D;
+};
+
+Texture2D    g_Texture0: register(t0);
+SamplerState g_Sampler0: register(s0);
+
+Vertex_Out VS(Vertex_In vin) {
+    Vertex_Out vout;
+    vout.position  = mul(float4(vin.position, 1.0), g_Projection2D);
+    vout.color     = vin.color_scale;
+    vout.texcoord  = vin.uv0;
+    vout.texture_id= vin.texture_id;
+    return vout;
+}
+
+float4 PS(Vertex_Out pin) : SV_Target {
+    if (pin.texture_id == 1.0) return g_Texture0.Sample(g_Sampler0, pin.texcoord) * pin.color;
+    else return pin.color;
 }
 
 HLSL
