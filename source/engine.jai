@@ -34,6 +34,7 @@ Engine :: struct {
     gpu_pixel\_buffer : PS_Constant_Buffer;
 
     shader_sprite : Shader;
+    shader_text   : Shader;
 }
 
 g_dirextx_texture : Texture;

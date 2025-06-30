@@ -233,8 +233,6 @@ gfx_set_projection2d :: (using gfx_device : *Graphics_Device,
         projection2d=orthographic_projection_matrix(0, render_target_width*1, render_target_height, 0, -1.0, 1.0)
     };
 
-    print("data projection %\n", data);
-
     mapped_data : D3D11_MAPPED_SUBRESOURCE;
     HR(ID3D11DeviceContext_Map(d3d_context, projection, 0, .WRITE_DISCARD, 0, *mapped_data));
     memcpy(mapped_data.pData, *data, size_of(CBuffer_Perframe));
