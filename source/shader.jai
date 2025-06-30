@@ -1,5 +1,4 @@
 Shader :: struct {
-    // platform specific
     vertex_shader : *ID3D11VertexShader;
     pixel\_shader : *ID3D11PixelShader;
     vertex_layout : *ID3D11InputLayout;
@@ -7,62 +6,39 @@ Shader :: struct {
     sampler_state : *ID3D11SamplerState;
 }
 
-shader_init :: (gfx_device : *Graphics_Device, using shader : *Shader, source : string, layout : *[]D3D11_INPUT_ELEMENT_DESC, have_sampler : bool = false) -> bool {
-    vs := compile_shader(source, "VS", "vs_5_0");
+shader_init :: (gfx_device : *Graphics_Device, 
+                using shader : *Shader, source : string, vertex_entrypoint: string, pixel_entrypoint: string) -> bool {
+
+    vs := compile_shader(source, vertex_entrypoint, "vs_5_0");
     defer free(vs);
     assert(vs.data != null);
     HR(ID3D11Device_CreateVertexShader(gfx_device.d3d_device, vs.data, cast(u64) vs.count, null, *vertex_shader));
 
-    HR(ID3D11Device_CreateInputLayout(gfx_device.d3d_device, layout.data, cast(u32) layout.count, vs.data, cast(u64) vs.count, *vertex_layout));
+    HR(ID3D11Device_CreateInputLayout(gfx_device.d3d_device, immediate_vertex_input_layout.data, cast(u32) immediate_vertex_input_layout.count, vs.data, cast(u64) vs.count, *vertex_layout));
     ID3D11DeviceContext_IASetInputLayout(gfx_device.d3d_context, vertex_layout);
 
-    ps := compile_shader(source, "PS", "ps_5_0");
+    ps := compile_shader(source, pixel_entrypoint, "ps_5_0");
     defer free(vs);
     assert(ps.data != null);
     HR(ID3D11Device_CreatePixelShader(gfx_device.d3d_device, ps.data, cast(u64) ps.count, null, *pixel_shader));
 
-    if have_sampler {
-        sampler_desc : D3D11_SAMPLER_DESC;
-        sampler_desc.AddressU = .WRAP; 
-        sampler_desc.AddressV = .WRAP;
-        sampler_desc.AddressW = .WRAP;
-        sampler_desc.MipLODBias = 0.0;
-        sampler_desc.MaxAnisotropy = 1;
-        sampler_desc.ComparisonFunc = .ALWAYS;
-        sampler_desc.BorderColor[0] = 0;
-        sampler_desc.BorderColor[1] = 0;
-        sampler_desc.BorderColor[2] = 0;
-        sampler_desc.BorderColor[3] = 0;
-        sampler_desc.MinLOD = 0;
-        sampler_desc.MaxLOD = FLOAT32_MAX;
+    sampler_desc : D3D11_SAMPLER_DESC;
+    sampler_desc.AddressU = .WRAP; 
+    sampler_desc.AddressV = .WRAP;
+    sampler_desc.AddressW = .WRAP;
+    sampler_desc.MipLODBias = 0.0;
+    sampler_desc.MaxAnisotropy = 1;
+    sampler_desc.ComparisonFunc = .ALWAYS;
+    sampler_desc.BorderColor[0] = 0;
+    sampler_desc.BorderColor[1] = 0;
+    sampler_desc.BorderColor[2] = 0;
+    sampler_desc.BorderColor[3] = 0;
+    sampler_desc.MinLOD = 0;
+    sampler_desc.MaxLOD = FLOAT32_MAX;
 
-        HR(ID3D11Device_CreateSamplerState(gfx_device.d3d_device, *sampler_desc, *sampler_state));
-    }
+    HR(ID3D11Device_CreateSamplerState(gfx_device.d3d_device, *sampler_desc, *sampler_state));
 
     return true;
-}
-
-compile_shader :: (source: string, entry_point: string, shader_model: string, loc := #caller_location) -> string {
-
-    flags := D3DCOMPILE.ENABLE_STRICTNESS;
-    #if DEBUG {
-        flags |= .DEBUG;
-        flags |= .SKIP_OPTIMIZATION;
-    }
-
-    defines : []string;
-    bytecode, errors, hr := D3DCompile(source, "source", defines, null, entry_point, shader_model, xx flags, 0);
-    defer free(errors);
-
-    if FAILED(hr) {
-        printed_result := tprint("D3DCompile failed: % %", errors, loc);
-        #if ASSERT_ON_FAIL assert(false, printed_result);
-
-        MessageBoxW(null, utf8_to_wide("D3DCompile failed"), utf8_to_wide("Untitle: Error"), MB_ICONERROR | MB_OK);
-        return "";
-    }
-
-    return bytecode;
 }
 
 SHADER_TEXT :: #string HLSL
@@ -113,7 +89,6 @@ cbuffer VS_Constant_Buffer : register(b0) {
     matrix g_Model;
     matrix g_View;
     matrix g_Proj;
-    // matrix g_WorldInvTranspose;
 };
 
 cbuffer PS_Constant_Buffer : register(b1) {
@@ -133,7 +108,6 @@ struct Vertex_In {
     float3 position     : POSITION;
     float4 color_scale  : COLOR; 
     float2 uv0          : TEXCOORD; 
-    float3 view_dir     : VIEWDIR;
     float3 normal       : NORMAL;
 };
 
@@ -251,7 +225,6 @@ Vertex_Out VS(Vertex_In v_in) {
 
     v_out.posH = mul(view_proj, pos_w);
     v_out.normalW = normalize(mul((float3x3)g_Model, v_in.normal));
-    // v_out.normalW = v_in.normal;
     v_out.posW    = pos_w.xyz; 
     v_out.color   = v_in.color_scale;
     v_out.texcoord= v_in.uv0;
@@ -296,3 +269,26 @@ float4 PS(Vertex_Out p_in) : SV_Target {
 }
 
 HLSL
+
+compile_shader :: (source: string, entry_point: string, shader_model: string, loc := #caller_location) -> string {
+
+    flags := D3DCOMPILE.ENABLE_STRICTNESS;
+    #if DEBUG {
+        flags |= .DEBUG;
+        flags |= .SKIP_OPTIMIZATION;
+    }
+
+    defines : []string;
+    bytecode, errors, hr := D3DCompile(source, "source", defines, null, entry_point, shader_model, xx flags, 0);
+    defer free(errors);
+
+    if FAILED(hr) {
+        printed_result := tprint("D3DCompile failed: % %", errors, loc);
+        #if ASSERT_ON_FAIL assert(false, printed_result);
+
+        MessageBoxW(null, utf8_to_wide("D3DCompile failed"), utf8_to_wide("Untitle: Error"), MB_ICONERROR | MB_OK);
+        return "";
+    }
+
+    return bytecode;
+}

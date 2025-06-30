@@ -38,10 +38,15 @@ Immediate_Vertex :: struct {
     position:    Vector3;
     color_scale: Vector4;
     uv0:         Vector2;
-    view_dir:    Vector3;
     normal:      Vector3;
-    // tangent:     Vector4;
 }
+
+immediate_vertex_input_layout :[]D3D11_INPUT_ELEMENT_DESC = .[
+    .{"POSITION",  0, .R32G32B32_FLOAT,    0,  0, .VERTEX_DATA, 0},
+    .{"COLOR",     0, .R32G32B32A32_FLOAT, 0, 12, .VERTEX_DATA, 0},
+    .{"TEXCOORD",  0, .R32G32_FLOAT,       0, 28, .VERTEX_DATA, 0},
+    .{"NORMAL",    0, .R32G32B32_FLOAT,    0, 36, .VERTEX_DATA, 0},
+];
 
 Material :: struct {
     ambient : Vector4;
@@ -59,11 +64,6 @@ VS_Constant_Buffer :: struct {
 
 PS_Constant_Buffer :: struct{
     directional_light : Directional_Light;
-    // point\     _light : Point_Light;
-    // spot\      _light : Spot_Light;
-
-    // material          : Material;
-
     eye_position      : Vector3;
     pad               : float;
 }
@@ -93,14 +93,7 @@ engine_init    :: (using engine : *Engine) -> bool {
 }
 
 engine_effect_init :: (using engine : *Engine) -> bool {
-    sprite_vertex_input_layout :[]D3D11_INPUT_ELEMENT_DESC = .[
-        .{"POSITION",  0, .R32G32B32_FLOAT,    0,  0, .VERTEX_DATA, 0},
-        .{"COLOR",     0, .R32G32B32A32_FLOAT, 0, 12, .VERTEX_DATA, 0},
-        .{"TEXCOORD",  0, .R32G32_FLOAT,       0, 28, .VERTEX_DATA, 0},
-        .{"VIEWDIR",   0, .R32G32B32_FLOAT,    0, 36, .VERTEX_DATA, 0},
-        .{"NORMAL",    0, .R32G32B32_FLOAT,    0, 48, .VERTEX_DATA, 0},
-    ];
-    success := shader_init(*gfx_device, *shader_sprite, SHADER_TEXT, *sprite_vertex_input_layout, true);
+    success := shader_init(*gfx_device, *shader_sprite, SHADER_TEXT, "VS", "PS");
 
     return success;
 }
