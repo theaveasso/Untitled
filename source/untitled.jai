@@ -22,6 +22,7 @@ main :: () {
             if it.type == .KEYBOARD {
                 if it.key_pressed if it.key_code == .ESCAPE g_should_quit = true;
                 if it.key_pressed if it.key_code == .SPACEBAR set_camera_control(!g_control_camera);
+                if it.key_pressed if it.key_code == xx #char "T"  g_engine.is_wireframe = !g_engine.is_wireframe;
             }
         }
 

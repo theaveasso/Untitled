@@ -24,15 +24,16 @@ camera_update :: (using camera: *Camera, dt: float) {
     move_input:  Vector3;
     move_speed:  float;
 
-    mouse_delta = xy (xx mouse_delta_x, xx mouse_delta_y);
     move_speed = FLY_SPEED;
 
     if g_control_camera {
+        mouse_delta = xy (xx mouse_delta_x, xx mouse_delta_y);
+
         if is_key_down(.SHIFT) then move_speed *= 2;
         move_speed *= dt;
         move_input.x = cast(float) is_key_down(xx #char "D") - cast(float) is_key_down(xx #char "A");
         move_input.y = cast(float) is_key_down(xx #char "E") - cast(float) is_key_down(xx #char "Q");
-        move_input.z = cast(float) is_key_down(xx #char "S") - cast(float) is_key_down(xx #char "W");
+        move_input.z = cast(float) is_key_down(xx #char "W") - cast(float) is_key_down(xx #char "S");
         move_input = rotate(unit_vector(move_input), rotation);
     }
 

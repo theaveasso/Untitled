@@ -348,23 +348,15 @@ gfx_draw_mesh :: (using gfx_device: *Graphics_Device,
 
     stride : u32 = size_of(Mesh_Vertex);
     offset : u32 = 0; 
+    ID3D11DeviceContext_IASetPrimitiveTopology(gfx_device.d3d_context, .TRIANGLELIST);
     ID3D11DeviceContext_IASetVertexBuffers(d3d_context, 0, 1, *mesh.vertex_buffer, *stride, *offset);
     ID3D11DeviceContext_IASetIndexBuffer(d3d_context, mesh.index_buffer, .R32_UINT, 0);
 
     ID3D11DeviceContext_VSSetConstantBuffers(d3d_context, 1, 1, *mesh.world_buffer);
 
-    mapped_data : D3D11_MAPPED_SUBRESOURCE;
-    HR(ID3D11DeviceContext_Map(d3d_context, mesh.vertex_buffer, 0, .WRITE_DISCARD, 0, *mapped_data));
-    memcpy(mapped_data.pData, mesh.vertices.data, size_of(Mesh_Vertex) * cast(u32) mesh.vertices.count);
-    ID3D11DeviceContext_Unmap(d3d_context, mesh.vertex_buffer, 0);
-
-    HR(ID3D11DeviceContext_Map(d3d_context, mesh.index_buffer, 0, .WRITE_DISCARD, 0, *mapped_data));
-    memcpy(mapped_data.pData, mesh.indices.data, size_of(u32) * cast(u32) mesh.indices.count);
-    ID3D11DeviceContext_Unmap(d3d_context, mesh.index_buffer, 0);
-
-    HR(ID3D11DeviceContext_Map(d3d_context, mesh.world_buffer, 0, .WRITE_DISCARD, 0, *mapped_data));
-    memcpy(mapped_data.pData, *world, size_of(Matrix4));
-    ID3D11DeviceContext_Unmap(d3d_context, mesh.world_buffer, 0);
+    gfx_map_buffer(gfx_device, mesh.vertex_buffer, mesh.vertices.data, size_of(Mesh_Vertex) * cast(u32) mesh.indices.count);
+    gfx_map_buffer(gfx_device, mesh.index_buffer,  mesh.indices.data, size_of(u32) * cast(u32) mesh.indices.count);
+    gfx_map_buffer(gfx_device, mesh.world_buffer,  *world, size_of(Matrix4));
 
     ID3D11DeviceContext_DrawIndexed(d3d_context, xx mesh.indices.count, 0, 0);
 }

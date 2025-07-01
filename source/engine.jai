@@ -28,8 +28,6 @@ Engine :: struct {
 
     ui:   UI;
 
-    rasterizer_state : *ID3D11RasterizerState;
-
     forward_lighting: Forward_Lighting;
 
     vertex_buffer : *ID3D11Buffer;
@@ -55,6 +53,12 @@ Engine :: struct {
     shader_sprite : Shader;
     shader_line   : Shader;
     shader_mesh   : Shader;
+
+    // rastersizer
+    is_wireframe: bool = false;
+
+    rs_mesh_wireframe:  *ID3D11RasterizerState;
+    rs_mesh_solid:      *ID3D11RasterizerState;
 }
 
 g_dirextx_texture : Texture;
@@ -143,16 +147,15 @@ engine_init    :: (using engine : *Engine) -> bool {
     success = engine_resource_init(engine);
 
     raster_desc : D3D11_RASTERIZER_DESC;
-    raster_desc.FillMode = .SOLID;
     raster_desc.CullMode = .NONE;
     raster_desc.FrontCounterClockwise = 0;
     raster_desc.DepthClipEnable = 1;
 
-    ID3D11Device_CreateRasterizerState(gfx_device.d3d_device, *raster_desc, *rasterizer_state);
-    ID3D11DeviceContext_RSSetState(gfx_device.d3d_context, rasterizer_state);
+    raster_desc.FillMode = .SOLID;
+    ID3D11Device_CreateRasterizerState(gfx_device.d3d_device, *raster_desc, *rs_mesh_solid);
 
-    // gfx_set_shader(*gfx_device, *shader_sprite);
-    // gfx_set_projection2d(*gfx_device, constant_buffer[0], xx screen_width, xx screen_height);
+    raster_desc.FillMode = .WIREFRAME;
+    ID3D11Device_CreateRasterizerState(gfx_device.d3d_device, *raster_desc, *rs_mesh_wireframe);
 
     camera.position = xyz(1, 1.3, -20);
     camera.euler_angles.x = -20 * PI / 180.0;
@@ -231,6 +234,11 @@ engine_update  :: (using engine: *Engine) {
     gfx_flush_line_commands(*gfx_device, *line_commands);
 
     gfx_set_shader(*gfx_device, *shader_mesh);
+    if is_wireframe 
+        ID3D11DeviceContext_RSSetState(gfx_device.d3d_context, rs_mesh_wireframe);
+    else
+        ID3D11DeviceContext_RSSetState(gfx_device.d3d_context, rs_mesh_solid);
+
     // forward lighting pass
     foward_lighting_pass(*gfx_device, *forward_lighting);
     gfx_draw_mesh(*gfx_device, table_find_pointer(*loaded_meshes, "Grayfish"));
