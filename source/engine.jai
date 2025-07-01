@@ -2,11 +2,17 @@ MAX_SPRITES  :: 1024;
 MAX_VERTICES :: 25000;
 MAX_MESH     :: 256;
 
-BUFFER_BINDING_CAMERA :: 2;
+MAX_MATERIALS:: 8;
+
+CBUFFER_VIEWPROJECTION  :: 0;
+CBUFFER_CAMERA          :: 1;
+SBUFFER_MATERIAL_LIST   :: 2;
+
+SRV\   _MATERIAL_LIST   :: 0;
 
 UI:: struct {
     toggle_grid: bool;
-    toggle_axis: bool;
+    toggle_axis: bool = true;
 }
 
 g_control_camera: bool;
@@ -30,20 +36,21 @@ Engine :: struct {
 
     forward_lighting: Forward_Lighting;
 
-    vertex_buffer : *ID3D11Buffer;
-    index\_buffer : *ID3D11Buffer;
-
     drawcommand   : DrawCommand;
     line_commands : Line_DrawCommand;
 
-    loaded_meshes : Table(string, Skinned_Mesh);
+    loaded_meshes   : Table(string, Skinned_Mesh);
+    loaded_materials: Table(string, Material);
 
-    constant_buffer: [4]*ID3D11Buffer;
+    // [0] - ViewProjection Matrix
+    // [1] - Mesh Render data
+    // [2] - Material List
+    constant_buffer: [3]*ID3D11Buffer;
+    srvs : [5]*ID3D11ShaderResourceView;
 
     vertices_count : u32;
     indices\_count : u32;
 
-    directional_light : Directional_Light; 
     point\     _light : Point_Light;
     spot\      _light : Spot_Light;  
 
@@ -126,7 +133,6 @@ CBuffer_Perframe :: struct {
 }
 
 PS_Constant_Buffer :: struct{
-    directional_light : Directional_Light;
     eye_position      : Vector3;
     pad               : float;
 }
@@ -157,9 +163,9 @@ engine_init    :: (using engine : *Engine) -> bool {
     raster_desc.FillMode = .WIREFRAME;
     ID3D11Device_CreateRasterizerState(gfx_device.d3d_device, *raster_desc, *rs_mesh_wireframe);
 
-    camera.position = xyz(1, 1.3, -20);
-    camera.euler_angles.x = -20 * PI / 180.0;
-    camera.euler_angles.y =  10 * PI / 180.0;
+    camera.position = xyz(10, 20, -30);
+    camera.euler_angles.x = 10 * PI / 180.0;
+    camera.euler_angles.y = 20 * PI / 180.0;
     camera.aspect = cast(float) screen_width / screen_height;
 
     return success;
@@ -175,47 +181,22 @@ engine_effect_init :: (using engine : *Engine) -> bool {
 }
 
 engine_resource_init :: (using engine : *Engine) -> bool {
-    box_mesh := make_box(2, 2, 2);
-    // geometry_mesh_reset(*gfx_device, *box_mesh, vertex_buffer, index_buffer);
-    // vertices_count = xx box_mesh.vertices.count;
-    // indices_count  = xx box_mesh.indices.count;
+    success: bool;
+
     drawcommands_init(engine);
     line_commands_init(engine);
 
+    success = materials_init(engine);
+
     forward_lighting_init(*gfx_device, *forward_lighting);
 
-    cbd : D3D11_BUFFER_DESC;
-    cbd.Usage = .DYNAMIC;
-    cbd.BindFlags = .CONSTANT_BUFFER;
-    cbd.CPUAccessFlags = .WRITE;
-    cbd.ByteWidth = size_of(Matrix4);
-    HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *cbd, null, *constant_buffer[0]));
-    cbd.ByteWidth = size_of(PS_Constant_Buffer);
-    HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *cbd, null, *constant_buffer[1]));
-
-    cbd.ByteWidth = size_of(Matrix4);
-    HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *cbd, null, *constant_buffer[2]));
-    cbd.ByteWidth = size_of(Matrix4);
-    HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *cbd, null, *constant_buffer[3]));
-
-    gpu_pixel_buffer.eye_position = .{0.0, 0.0, -5.0};
+    success = cbuffer_create(*gfx_device, *constant_buffer[CBUFFER_VIEWPROJECTION], .CONSTANT_BUFFER, size_of(Matrix4));
+    success = cbuffer_create(*gfx_device, *constant_buffer[CBUFFER_CAMERA], .CONSTANT_BUFFER, size_of(CBuffer_Camera));
 
     texture_load_from_file(*gfx_device, *g_dirextx_texture, "resources/rock_wall_13_diff_4k.jpg");
-
     find_and_load_meshes(engine);
 
-    ID3D11DeviceContext_IASetPrimitiveTopology(gfx_device.d3d_context, .TRIANGLELIST);
-
-    ID3D11DeviceContext_VSSetShader(gfx_device.d3d_context, shader_sprite.vertex_shader, null, 0);
-    ID3D11DeviceContext_VSSetConstantBuffers(gfx_device.d3d_context, 0, 1, *constant_buffer[0]);
-
-    ID3D11DeviceContext_PSSetShader(gfx_device.d3d_context, shader_sprite.pixel_shader, null, 0);
-    ID3D11DeviceContext_PSSetConstantBuffers(gfx_device.d3d_context, 1, 1, *constant_buffer[1]);
-
-    ID3D11DeviceContext_VSSetShader(gfx_device.d3d_context, shader_mesh.vertex_shader, null, 0);
-    ID3D11DeviceContext_PSSetConstantBuffers(gfx_device.d3d_context, 0, 1, *constant_buffer[2]);
-
-    return true;
+    return success;
 }
 
 engine_update  :: (using engine: *Engine) {
@@ -227,21 +208,24 @@ engine_update  :: (using engine: *Engine) {
     camera_update(*camera, 0.01667);
     ui_update(*ui);
 
+    gfx_set_projection(*gfx_device, constant_buffer[CBUFFER_VIEWPROJECTION], *camera);
+    gfx_set_camera(*gfx_device, constant_buffer[CBUFFER_CAMERA], *camera);
+
     gfx_set_shader(*gfx_device, *shader_line);
-    gfx_set_projection(*gfx_device, constant_buffer[BUFFER_BINDING_CAMERA], *camera);
     if ui.toggle_axis draw_axis(*gfx_device, *line_commands);
     if ui.toggle_grid draw_grid(*gfx_device, *line_commands);
     gfx_flush_line_commands(*gfx_device, *line_commands);
 
+    // forward lighting pass
     gfx_set_shader(*gfx_device, *shader_mesh);
+    ID3D11DeviceContext_PSSetShaderResources(gfx_device.d3d_context, 3, 1, *srvs[SRV_MATERIAL_LIST]);
     if is_wireframe 
         ID3D11DeviceContext_RSSetState(gfx_device.d3d_context, rs_mesh_wireframe);
     else
         ID3D11DeviceContext_RSSetState(gfx_device.d3d_context, rs_mesh_solid);
 
-    // forward lighting pass
     foward_lighting_pass(*gfx_device, *forward_lighting);
-    gfx_draw_mesh(*gfx_device, table_find_pointer(*loaded_meshes, "Grayfish"));
+    gfx_draw_mesh(*gfx_device, table_find_pointer(*loaded_meshes, "Grayfish"), _world=make_scale_matrix4(.{.1, .1, .1}));
 
     // engine_scene_update(*g_engine, 0.1667);
 
@@ -316,17 +300,17 @@ engine_scene_update :: (using engine : *Engine, dt : float) {
         IMGUI.Separator();
         IMGUI.Text("Mesh");
         if IMGUI.Combo(to_c_string("Mesh Type"), *current_mesh_index, mesh_types.data, cast(s32) mesh_types.count) {
-            mesh_data : Mesh_Data(Immediate_Vertex);
-            if current_mesh_index == {
-                case; #through;
-                case 0; mesh_data = make_box();
-                case 1; mesh_data = make_sphere();
-            }
+            // mesh_data : Mesh_Data(Immediate_Vertex);
+            // if current_mesh_index == {
+            //     case; #through;
+            //     case 0; mesh_data = make_box();
+            //     case 1; mesh_data = make_sphere();
+            // }
 
-            vertices_count = xx mesh_data.vertices.count;
-            indices_count =  xx mesh_data.indices.count;
+            // vertices_count = xx mesh_data.vertices.count;
+            // indices_count =  xx mesh_data.indices.count;
 
-            geometry_mesh_reset(*gfx_device, *mesh_data, vertex_buffer, index_buffer);
+            // geometry_mesh_reset(*gfx_device, *mesh_data, vertex_buffer, index_buffer);
         }
 
         IMGUI.Separator();
@@ -336,17 +320,17 @@ engine_scene_update :: (using engine : *Engine, dt : float) {
         IMGUI.Text("Light");
         if IMGUI.Combo(to_c_string("Light Type"), *current_light_index, light_types.data, cast(s32) light_types.count) {
             if current_light_index ==  {
-                case; #through;
-                case 0; gpu_pixel_buffer.directional_light = make_directional_light(.{1.0, 1.0, 1.0, 1.0}, .{0.0, -1.0, 0.0});
+                // case; #through;
+                // case 0; gpu_pixel_buffer.directional_light = make_directional_light(.{1.0, 1.0, 1.0, 1.0}, .{0.0, -1.0, 0.0});
             }
         }
 
         IMGUI.PushID(current_light_index);
         if current_light_index == {
             case 0;
-                IMGUI.ColorEdit3("Ambient",  *gpu_pixel_buffer.directional_light.ambient.xyz);
-                IMGUI.ColorEdit3("Diffuse",  *gpu_pixel_buffer.directional_light.diffuse.xyz);
-                IMGUI.ColorEdit3("Specular", *gpu_pixel_buffer.directional_light.specular.xyz);
+                // IMGUI.ColorEdit3("Ambient",  *gpu_pixel_buffer.directional_light.ambient.xyz);
+                // IMGUI.ColorEdit3("Diffuse",  *gpu_pixel_buffer.directional_light.diffuse.xyz);
+                // IMGUI.ColorEdit3("Specular", *gpu_pixel_buffer.directional_light.specular.xyz);
         }
         IMGUI.PopID();
 
@@ -375,41 +359,6 @@ engine_scene_update :: (using engine : *Engine, dt : float) {
     ID3D11DeviceContext_PSSetSamplers(d3d_context, 0, 1, *shader_sprite.sampler_state);
 }
 
-geometry_mesh_reset :: (using gfx_device : *Graphics_Device, mesh_data : *Mesh_Data($T), vertex_buffer : *ID3D11Buffer, index_buffer : *ID3D11Buffer) {
-    vertex_buffer = null;
-    index\_buffer = null;
-
-    vbd : D3D11_BUFFER_DESC;
-    vbd.Usage = .IMMUTABLE;
-    vbd.ByteWidth = cast(u32) (mesh_data.vertices.count * size_of(T));
-    vbd.BindFlags = .VERTEX_BUFFER;
-    vbd.CPUAccessFlags = 0;
-
-    vid : D3D11_SUBRESOURCE_DATA;
-    vid.pSysMem = mesh_data.vertices.data;
-
-    HR(ID3D11Device_CreateBuffer(d3d_device, *vbd, *vid, *vertex_buffer));
-
-    stride : u32 = size_of(T);
-    offset : u32 = 0; 
-    ID3D11DeviceContext_IASetVertexBuffers(d3d_context, 0, 1, *vertex_buffer, *stride, *offset);
-
-    ibd : D3D11_BUFFER_DESC;
-    ibd.Usage = .IMMUTABLE;
-    ibd.ByteWidth = cast(u32) (mesh_data.indices.count * size_of(u32));
-    ibd.BindFlags = .INDEX_BUFFER;
-    ibd.CPUAccessFlags = 0;
-
-    iid : D3D11_SUBRESOURCE_DATA;
-    iid.pSysMem = mesh_data.indices.data;
-
-    HR(ID3D11Device_CreateBuffer(d3d_device, *ibd, *iid, *index_buffer));
-    ID3D11DeviceContext_IASetIndexBuffer(d3d_context, index_buffer, .R32_UINT, 0);
-
-    D3D11SetDebugObjectName(d3d_device, vertex_buffer, "VertexBuffer");
-    D3D11SetDebugObjectName(d3d_device, index\_buffer, "IndexBuffer");
-}
-
 #scope_file
 drawcommands_init :: (using engine: *Engine) {
     vbd : D3D11_BUFFER_DESC;
@@ -428,8 +377,8 @@ drawcommands_init :: (using engine: *Engine) {
 
     HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *ibd, null, *drawcommand.index_buffer));
 
-    D3D11SetDebugObjectName(gfx_device.d3d_device, vertex_buffer, "DrawCommand_VertexBuffer");
-    D3D11SetDebugObjectName(gfx_device.d3d_device, index\_buffer, "DrawCommand_IndexBuffer");
+    D3D11SetDebugObjectName(gfx_device.d3d_device, drawcommand.vertex_buffer, "DrawCommand_VertexBuffer");
+    D3D11SetDebugObjectName(gfx_device.d3d_device, drawcommand.index_buffer, "DrawCommand_IndexBuffer");
 }
 
 line_commands_init :: (using engine: *Engine) {
@@ -441,7 +390,7 @@ line_commands_init :: (using engine: *Engine) {
 
     HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *vbd, null, *line_commands.vertex_buffer));
 
-    D3D11SetDebugObjectName(gfx_device.d3d_device, vertex_buffer, "LineCommands_VertexBuffer");
+    D3D11SetDebugObjectName(gfx_device.d3d_device, line_commands.vertex_buffer, "LineCommands_VertexBuffer");
 }
 
 find_and_load_meshes :: inline (using engine: *Engine) {
@@ -454,6 +403,35 @@ find_and_load_meshes :: inline (using engine: *Engine) {
     } else {
         log_error("mesh_load_from_file");
     }
+}
+
+materials_init :: (using engine: *Engine) -> bool {
+    table_ensure_space(*loaded_materials, MAX_MATERIALS);
+
+    default:= Material.{
+        ambient = .{1, 0.0, 0.0, 1.0},
+        diffuse = .{0.8, 0.8, 0.8, 1.0},
+        specular= .{0.5, 0.5, 0.5, 32.0},
+        reflect = .{w=1.0},
+    };
+
+    table_add(*loaded_materials, copy_string("Default"), default);
+
+    data : []Material = .[
+        default,
+    ];
+
+    ok := sbuffer_create(*gfx_device, *constant_buffer[SBUFFER_MATERIAL_LIST], size_of(Material) * MAX_MATERIALS, size_of(Material), xx data.data);
+
+    srv_desc: D3D11_SHADER_RESOURCE_VIEW_DESC;
+    srv_desc.Format = .UNKNOWN;
+    srv_desc.ViewDimension = .BUFFER;
+    srv_desc.Buffer.FirstElement= 0;
+    srv_desc.Buffer.NumElements = MAX_MATERIALS;
+
+    ID3D11Device_CreateShaderResourceView(gfx_device.d3d_device, constant_buffer[SBUFFER_MATERIAL_LIST], *srv_desc, *srvs[SRV_MATERIAL_LIST]);
+
+    return ok;
 }
 
 draw_axis :: inline (gfx_device: *Graphics_Device, commands: *Line_DrawCommand) {

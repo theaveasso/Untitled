@@ -8,14 +8,20 @@ Mesh_Vertex :: struct {
     // weights: [4]s16;
 }
 
+CBuffer_Mesh :: struct {
+    world:      Matrix4;
+    material_id:u32; 
+    _pad:        Vector3;
+}
+
 Skinned_Mesh :: struct {
     vertices: []Mesh_Vertex;
     indices:  []u32;
 
-    vertex_buffer: *ID3D11Buffer;
-    index_buffer:  *ID3D11Buffer;
+    buffer_vertex: *ID3D11Buffer;
+    buffer_index:  *ID3D11Buffer;
 
-    world_buffer:  *ID3D11Buffer;
+    buffer_mesh:  *ID3D11Buffer;
 }
 
 mesh_load_from_file :: (mesh: *Skinned_Mesh, filename: string) -> bool {
@@ -85,31 +91,18 @@ mesh_load_from_file :: (mesh: *Skinned_Mesh, filename: string) -> bool {
     return true;
 }
 
-mesh_reset :: (gfx_device: *Graphics_Device, using mesh: *Skinned_Mesh) {
-    vbd : D3D11_BUFFER_DESC;
-    vbd.Usage = .DYNAMIC;
-    vbd.BindFlags = .VERTEX_BUFFER;
-    vbd.CPUAccessFlags = .WRITE;
-    vbd.ByteWidth = cast(u32) (size_of(Mesh_Vertex) * vertices.count);
-    HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *vbd, null, *mesh.vertex_buffer));
+mesh_reset :: (gfx_device: *Graphics_Device, using mesh: *Skinned_Mesh) -> bool {
+    success: bool;
 
-    ibd : D3D11_BUFFER_DESC;
-    ibd.Usage = .DYNAMIC;
-    ibd.ByteWidth = cast(u32) (size_of(u32) * indices.count);
-    ibd.BindFlags = .INDEX_BUFFER;
-    ibd.CPUAccessFlags = .WRITE;
-    HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *ibd, null, *mesh.index_buffer));
+    success = cbuffer_create(gfx_device, *buffer_vertex, .VERTEX_BUFFER, cast(u32) (size_of(Mesh_Vertex) * vertices.count));
+    success = cbuffer_create(gfx_device, *buffer_index,  .INDEX_BUFFER, cast(u32) (size_of(u32) * indices.count));
+    success = cbuffer_create(gfx_device, *buffer_mesh,   .CONSTANT_BUFFER, cast(u32) size_of(CBuffer_Mesh));
 
-    cbd : D3D11_BUFFER_DESC;
-    cbd.Usage = .DYNAMIC;
-    cbd.BindFlags = .CONSTANT_BUFFER;
-    cbd.CPUAccessFlags = .WRITE;
-    cbd.ByteWidth = size_of(Matrix4);
-    HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *cbd, null, *world_buffer));
+    D3D11SetDebugObjectName(gfx_device.d3d_device, buffer_vertex,   "Skinned_Mesh_VertexBuffer");
+    D3D11SetDebugObjectName(gfx_device.d3d_device, buffer_index,    "Skinned_Mesh_IndexBuffer");
+    D3D11SetDebugObjectName(gfx_device.d3d_device, buffer_mesh,     "Skinned_Mesh_MeshBuffer");
 
-    D3D11SetDebugObjectName(gfx_device.d3d_device, vertex_buffer, "Skinned_Mesh_VertexBuffer");
-    D3D11SetDebugObjectName(gfx_device.d3d_device, index\_buffer, "Skinned_Mesh_IndexBuffer");
-    D3D11SetDebugObjectName(gfx_device.d3d_device, world\_buffer, "Skinned_Mesh_WorldBuffer");
+    return success;
 }
 
 #import, dir "../vendor/gltf_parser";

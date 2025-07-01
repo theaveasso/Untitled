@@ -231,14 +231,24 @@ gfx_set_projection2d :: (using gfx_device : *Graphics_Device,
 
     viewproj :=orthographic_projection_matrix(0, render_target_width*1, render_target_height, 0, -1.0, 1.0);
     ID3D11DeviceContext_VSSetConstantBuffers(d3d_context, 0, 1, *buffer);
-    gfx_map_buffer(gfx_device, buffer, *viewproj, size_of(Matrix4));
+    cbuffer_map(gfx_device, buffer, *viewproj, size_of(Matrix4));
 }
 
 gfx_set_projection :: (using gfx_device: *Graphics_Device, 
                        buffer: *ID3D11Buffer, camera: *Camera) {
 
     ID3D11DeviceContext_VSSetConstantBuffers(d3d_context, 0, 1, *buffer);
-    gfx_map_buffer(gfx_device, buffer, *camera.viewproj_matrix, size_of(Matrix4));
+    cbuffer_map(gfx_device, buffer, *camera.viewproj_matrix, size_of(Matrix4));
+}
+
+gfx_set_camera :: (using gfx_device: *Graphics_Device, 
+                       buffer: *ID3D11Buffer, camera: *Camera) {
+
+    ID3D11DeviceContext_PSSetConstantBuffers(d3d_context, 1, 1, *buffer);
+    data := CBuffer_Camera.{
+        position=camera.position,
+    };
+    cbuffer_map(gfx_device, buffer, *data, size_of(CBuffer_Camera));
 }
 
 gfx_set_shader :: (using gfx_device: *Graphics_Device, shader: *Shader) {
@@ -283,7 +293,7 @@ gfx_flush_line_commands :: (using gfx_device: *Graphics_Device, commands: *Line_
     ID3D11DeviceContext_IASetVertexBuffers(d3d_context, 0, 1, *commands.vertex_buffer, *stride, *offset);
     ID3D11DeviceContext_IASetPrimitiveTopology(d3d_context, .LINELIST);
 
-    gfx_map_buffer(gfx_device, commands.vertex_buffer, commands.vertices.data, size_of(Line_Vertex) * cast(u32) commands.num_vertices);
+    cbuffer_map(gfx_device, commands.vertex_buffer, commands.vertices.data, size_of(Line_Vertex) * cast(u32) commands.num_vertices);
 
     ID3D11DeviceContext_Draw(d3d_context, xx commands.num_vertices, 0);
 
@@ -344,30 +354,27 @@ gfx_draw_line :: (gfx_device: *Graphics_Device,
 }
 
 gfx_draw_mesh :: (using gfx_device: *Graphics_Device, 
-                  mesh: *Skinned_Mesh, world:= Matrix4_Identity) {
+                  mesh: *Skinned_Mesh, _world:= Matrix4_Identity, material:= "Default") {
 
     stride : u32 = size_of(Mesh_Vertex);
     offset : u32 = 0; 
     ID3D11DeviceContext_IASetPrimitiveTopology(gfx_device.d3d_context, .TRIANGLELIST);
-    ID3D11DeviceContext_IASetVertexBuffers(d3d_context, 0, 1, *mesh.vertex_buffer, *stride, *offset);
-    ID3D11DeviceContext_IASetIndexBuffer(d3d_context, mesh.index_buffer, .R32_UINT, 0);
+    ID3D11DeviceContext_IASetVertexBuffers(d3d_context, 0, 1, *mesh.buffer_vertex, *stride, *offset);
+    ID3D11DeviceContext_IASetIndexBuffer(d3d_context, mesh.buffer_index, .R32_UINT, 0);
 
-    ID3D11DeviceContext_VSSetConstantBuffers(d3d_context, 1, 1, *mesh.world_buffer);
+    ID3D11DeviceContext_VSSetConstantBuffers(d3d_context, 2, 1, *mesh.buffer_mesh);
 
-    gfx_map_buffer(gfx_device, mesh.vertex_buffer, mesh.vertices.data, size_of(Mesh_Vertex) * cast(u32) mesh.indices.count);
-    gfx_map_buffer(gfx_device, mesh.index_buffer,  mesh.indices.data, size_of(u32) * cast(u32) mesh.indices.count);
-    gfx_map_buffer(gfx_device, mesh.world_buffer,  *world, size_of(Matrix4));
+    cbuffer_map(gfx_device, mesh.buffer_vertex, mesh.vertices.data, size_of(Mesh_Vertex) * cast(u32) mesh.indices.count);
+    cbuffer_map(gfx_device, mesh.buffer_index,  mesh.indices.data, size_of(u32) * cast(u32) mesh.indices.count);
+
+    mesh_data : CBuffer_Mesh = .{
+        world = _world,
+        material_id = material_index(material),
+    };
+
+    cbuffer_map(gfx_device, mesh.buffer_mesh, *mesh_data, size_of(CBuffer_Mesh));
 
     ID3D11DeviceContext_DrawIndexed(d3d_context, xx mesh.indices.count, 0, 0);
-}
-
-gfx_map_buffer :: (using gfx_device: *Graphics_Device,
-                   buffer: *ID3D11Buffer, data: *void, size: u32) {
-
-    mapped_data : D3D11_MAPPED_SUBRESOURCE;
-    HR(ID3D11DeviceContext_Map(d3d_context, buffer, 0, .WRITE_DISCARD, 0, *mapped_data));
-    memcpy(mapped_data.pData, data, size);
-    ID3D11DeviceContext_Unmap(d3d_context, buffer, 0);
 }
 
 #scope_file
@@ -416,4 +423,11 @@ CheckVerticesSpace :: (n: s32, dc: *DrawCommand) #expand {
 
 CheckIndicesSpace :: (n: s32, dc: *DrawCommand) #expand {
     `i := gfx_index_pointer(dc);
+}
+
+material_index :: inline (tag: string = "Default") -> u32 {
+    if tag == {
+        case; #through;
+        case "Default"; return 0;
+    }
 }

@@ -19,6 +19,11 @@ Camera :: struct {
     viewproj_matrix:=   Matrix4_Identity;
 }
 
+CBuffer_Camera :: struct {
+    position: Vector3;
+    pad:      float;
+}
+
 camera_update :: (using camera: *Camera, dt: float) {
     mouse_delta: Vector2;
     move_input:  Vector3;

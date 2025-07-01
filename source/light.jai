@@ -4,12 +4,16 @@ CBuffer_Hemispheric :: struct {
 }
 
 Forward_Lighting :: struct {
-    constant_buffer: [1]*ID3D11Buffer;
+    CBUFFER_HEMISPHERIC :: 0;
+    CBUFFER_DIRECTIONAL :: 1;
+
+    constant_buffer: [5]*ID3D11Buffer;
 
     hemispheric_ambient: CBuffer_Hemispheric;
+    directional_light:   CBuffer_DirectionalLight;
 }
 
-Directional_Light :: struct {
+CBuffer_DirectionalLight :: struct {
     ambient : Vector4;
     diffuse : Vector4;
     specular: Vector4;
@@ -44,32 +48,30 @@ Spot_Light :: struct {
     pad     : float;
 }
 
-make_directional_light :: (_diffuse: Vector4, _direction: Vector3) -> Directional_Light {
-    directional_light: Directional_Light;
-    directional_light.diffuse   = _diffuse;
-    directional_light.direction = _direction;
-    directional_light.specular  = .{1.0, 1.0, 1.0, 1.0};
-
-    return directional_light;
-}
-
 forward_lighting_init :: (gfx_device: *Graphics_Device, 
-                          using foward_lighting: *Forward_Lighting) {
+                          using foward_lighting: *Forward_Lighting) -> bool {
+
+    success: bool;
 
     hemispheric_ambient.down  = xyzw(0.25, 0.22, 0.20, 1.0);
     hemispheric_ambient.range = xyzw(0.60, 0.70, 0.80, 1.0) - hemispheric_ambient.down;
 
-    cbd : D3D11_BUFFER_DESC;
-    cbd.Usage = .DYNAMIC;
-    cbd.BindFlags = .CONSTANT_BUFFER;
-    cbd.CPUAccessFlags = .WRITE;
-    cbd.ByteWidth = size_of(CBuffer_Hemispheric);
-    HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *cbd, null, *constant_buffer[0]));
+    directional_light.ambient  = xyzw(0.2, 0.2, 0.2, 1.0);   // soft ambient gray
+    directional_light.diffuse  = xyzw(1.0, 0.95, 0.85, 1.0); // warm sunlight color
+    directional_light.specular = xyzw(1.0, 1.0, 1.0, 1.0);   // white specular highlights
+    directional_light.direction = normalize(xyz(-0.5, -1.0, -0.3)); // light shining diagonally down
+
+    success = cbuffer_create(gfx_device, *constant_buffer[CBUFFER_HEMISPHERIC], .CONSTANT_BUFFER, size_of(CBuffer_Hemispheric), *hemispheric_ambient);
+    success = cbuffer_create(gfx_device, *constant_buffer[CBUFFER_DIRECTIONAL], .CONSTANT_BUFFER, size_of(CBuffer_DirectionalLight));
+
+    return success;
 }
 
 foward_lighting_pass :: (gfx_device: *Graphics_Device,
                          using foward_lighting: *Forward_Lighting) {
 
-    ID3D11DeviceContext_PSSetConstantBuffers(gfx_device.d3d_context, 2, 1, *constant_buffer[0]);
-    gfx_map_buffer(gfx_device, constant_buffer[0], *hemispheric_ambient, size_of(CBuffer_Hemispheric));
+    ID3D11DeviceContext_PSSetConstantBuffers(gfx_device.d3d_context, 3, 1, *constant_buffer[CBUFFER_HEMISPHERIC]);
+
+    ID3D11DeviceContext_PSSetConstantBuffers(gfx_device.d3d_context, 4, 1, *constant_buffer[CBUFFER_DIRECTIONAL]);
+    cbuffer_map(gfx_device, constant_buffer[CBUFFER_DIRECTIONAL], *directional_light, size_of(CBuffer_DirectionalLight));
 }

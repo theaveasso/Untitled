@@ -22,7 +22,6 @@ IMGUI :: #import, dir "../vendor/imgui";
 ImDrawData      :: IMGUI.ImDrawData;
 ImTextureData   :: IMGUI.ImTextureData;
 
-#load "geometry.jai";
 #load "engine.jai";
 #load "renderer.jai";
 #load "light.jai";
@@ -33,6 +32,8 @@ ImTextureData   :: IMGUI.ImTextureData;
 
 #load "texture.jai";
 #load "bitmap.jai";
+
+#load "backend/buffer.jai";
 
 ASSERT_ON_FAIL  :: true;
 BREAK_ON_ERROR  :: false; 

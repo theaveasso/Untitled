@@ -339,6 +339,26 @@ HLSL
 
 SHADER_MESH :: #string HLSL
 
+struct Material {
+    float4 ambient;
+    float4 diffuse;
+    float4 specular;
+    float4 reflect;
+};
+
+struct DirectionalLight {
+    float4 ambient;
+    float4 diffuse;
+    float4 specular;
+    float3 direction;
+    float  _pad;
+};
+
+struct Camera {
+    float3 position;
+    float  _pad;
+};
+
 struct Vertex_In {
     float3 position     : POSITION;
     float3 normal       : NORMAL;
@@ -347,38 +367,98 @@ struct Vertex_In {
 struct Vertex_Out {
     float4 position:    SV_Position;
     float3 normal:      NORMAL;
+    float3 worldPos:    WORLD_POS;
 };
 
 cbuffer CBuffer_Perframe : register(b0) {
-    matrix g_ViewProjection;
+    matrix g_viewProjection;
 };
 
-cbuffer CBuffer_World    : register(b1) {
-    matrix g_World;
+cbuffer CBuffer_Camera : register(b1) {
+    Camera g_camera;
 };
 
-cbuffer CBuffer_Hemispheric : register(b2) {
-    float4 g_AmbientDown;
-    float4 g_AmbientRange;
+cbuffer CBuffer_Mesh : register(b2) {
+    matrix g_world;
+    uint   g_materialID;
 };
+
+cbuffer CBuffer_Hemispheric : register(b3) {
+    float4 g_ambientDown;
+    float4 g_ambientRange;
+};
+
+cbuffer CBuffer_DirectionalLight : register(b4) {
+    DirectionalLight g_dirLight;
+};
+
+StructuredBuffer<Material> g_materials : register(t3);
 
 Vertex_Out VS(Vertex_In vin) {
     Vertex_Out vout;
-    vout.position  = mul(float4(vin.position, 1.0), g_World);
-    vout.position  = mul(vout.position, g_ViewProjection);
-    vout.normal    = vin.normal;
+    float4 position  = mul(float4(vin.position, 1.0), g_world);
+    vout.position  = mul(position, g_viewProjection);
+    vout.worldPos  = position.xyz;
+    vout.normal = mul((float3x3)g_world, vin.normal);
+
     return vout;
 }
 
 float4 ComputeHemisphereAmbient(float3 normal) {
     float blend = saturate(normal.y * 0.5 + 0.5);
-    return mad(blend, g_AmbientRange, g_AmbientDown);
+    return mad(blend, g_ambientRange, g_ambientDown);
 }
+
+void ComputeDirectionalLight(Material M, DirectionalLight L,
+    float3 normal, 
+    float3 viewdir,
+    out float4 ambient,
+    out float4 diffuse,
+    out float4 spec) {
+
+    ambient = float4(0.0f,0.0f,0.0f,0.0f);
+    diffuse = float4(0.0f,0.0f,0.0f,0.0f);
+    spec    = float4(0.0f,0.0f,0.0f,0.0f);
+
+    float3 light_vec = -L.direction;
+
+    ambient = M.ambient * L.ambient;
+    float diffuse_factor = dot(light_vec, normal);
+    [flatten]
+    if (diffuse_factor > 0.0) {
+        float3 v = reflect(-light_vec, normal);
+        float  spec_factor = pow(max(dot(v, viewdir), 0.0), M.specular.w);
+
+        diffuse = diffuse_factor * M.diffuse * L.diffuse;
+        spec    = spec_factor * M.specular * L.specular;
+    }
+}
+
 
 float4 PS(Vertex_Out pin) : SV_Target {
 
-    float4 ambient = ComputeHemisphereAmbient(normalize(pin.normal));
-    return ambient; 
+    Material mat = g_materials[g_materialID];
+
+    float4 ambient, diffuse, specular;
+    float4 a, d, s;
+
+    ambient = diffuse = specular = float4(0.0f,0.0f,0.0f,0.0f);
+    a = d = s = float4(0.0f,0.0f,0.0f,0.0f);
+
+    float3 normal  = normalize(pin.normal);
+    float3 viewdir = normalize(g_camera.position - pin.worldPos);
+
+    float4 hemi = ComputeHemisphereAmbient(normal);
+
+    ComputeDirectionalLight(mat, g_dirLight, normal, viewdir, a, d, s);
+    ambient += a;
+    diffuse += d;
+    specular+= s;
+
+    float4 litColor = hemi * (ambient + diffuse) + specular;
+    litColor.a = mat.diffuse.a * hemi.a;
+
+    return litColor; 
 }
 
 HLSL
