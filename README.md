@@ -1,58 +1,87 @@
 # Untitled
 
-Yet another Voxel engine without title.
+🚧 This is a learning-focused renderer under construction — built with love and low-level code.
 
-## Phase 0: Groundwork
-- [x] Setup OpenGL context.
-- [x] Setup Camera movement and controls.
-- [x] Add basic input system (WASD, mouse)
-- [x] Basic rendering (quad, cube, terrain[WIP])
+Yet another renderer engine without title. This built from the ground up using **DirectX 11** and **JAI** — focused on lighting, performance, and GPU-driven workflows. This project serves as a personal exploration of engine architecture, graphics programming, and system-level design without relying on third-party game engines.
 
-## Phase 1: Core Voxel Structure
-🎯 Goal: Create your dynamic voxel representation
-- [ ] Design `Voxel` structure
-- [ ] Implement `Chunk` system
 
-## Phase 2: Meshing
-🎯 Goal: Render visible voxels efficiently
-- [ ] Implement greedy meshing / surface nets / Marching Cubes (for smooth surfaces)
-- [ ] Cull hidden voxels (faces between filled neighbors)
-- [x] Upload vertex data to OpenGL buffers (VBOs, VAOs)
-- [ ] Support dynamic remeshing when voxel data changes
+## ✨ Features
 
-## Phase 3: Rendering
-🎯 Goal: Make it look decent and fast
-- [ ] Write voxel fragment + vertex shaders
-- [ ] Add per-voxel lighting (basic Lambert or Blinn-Phong)
-- Add support for:
-    - [ ] Normal mapping (optional)
-    - [ ] Ambient Occlusion (precomputed or SSAO)
-    - [ ] Transparency (for water, glass)
-- [ ] Use frustum culling to skip off-screen chunks
+- 🧵 **glTF Model Viewer**
+  - Loads static glTF/glb files (geometry data)
+  - Custom vertex layout and GPU upload pipeline
+- 💡 **Forward Lighting Pass**
+  - Directional light with Blinn-Phong highlights
+  - Hemispheric ambient light (simple ambient approximation)
+  - Per-material lighting logic in HLSL
+- 🧰 **2D Sprite Batching**
+  - Dynamic batching system using indexed quads
+  - Ideal for UI overlays or debug rendering
+- 🎨 **Material System**
+  - GPU-side `StructuredBuffer<Material>` with ID-based lookup
+  - Per-object constant buffer contains material index and transform
+- ⚙️ **DirectX 11 Backend**
+  - Manually managed device, states, buffers, and draw calls
+  - Shader-driven rendering with clean buffer separation
 
-## Phase 4: Interactivity
-🎯 Goal: World changes in real-time
-- [ ] Raycast picking (select voxel under cursor)
-- [ ] Add / remove / modify voxels at runtime
-- [ ] Dynamic chunk remeshing on edit
+## 🚧 Work in Progress
 
-## Phase 5: Optimization
-🎯 Goal: Make it scalable
-- [ ] Multithread chunk meshing and generation
-- [ ] Implement LOD system (more coarse far away)
-- [ ] Use spatial partitioning for updates (e.g., octree)
-- [ ] Implement chunk streaming (load/unload based on camera pos)
+This project is **not yet real-time or optimized**. It's a renderer under active development, intended to test core features and rendering workflows.
 
-## Phase 6: World Generation (optional)
-🎯 Goal: Generate interesting terrain or structures
-- [ ] Perlin / Simplex noise terrain generator
-- [ ] Cave generation (e.g., 3D noise or cellular automata)
-- [ ] Place trees/structures procedurally
+Current focus areas:
+- Building a simple scene/instance system
+- Improving GPU material lookup and buffer management
+- Adding debug overlays and shader hot-reloading (planned)
 
-## Phase 7: Polishing & Extras
-🎯 Goal: Make it feel like a game engine
-- [ ] Basic UI (debug info, FPS counter)
-- [ ] Post-processing (FXAA, bloom, etc.)
-- [ ] Save/load voxel world (binary or compressed formats)
-- [ ] Physics / collision (AABB or voxel-aware)
+## 💼 About the Developer
 
+I'm an aspiring graphics programmer focused on understanding the low-level foundations of rendering engines. This project reflects my hands-on approach to learning modern GPU pipelines, lighting models, and rendering techniques from scratch.
+
+## 🔧 Tech Stack
+
+- **Language**: Jai
+- **Graphics API**: DirectX 11
+- **Shader Language**: HLSL
+- **Rendering**: Forward pass with lighting
+- **Model Format**: glTF 2.0 (geometry/material only)
+
+## 📌 Goals
+
+- Build a functional forward rendering/ deferred rendering pipeline
+- Showcase lighting and structured GPU material design
+- Prepare a foundation for real-time rendering in the future
+
+---
+
+## 🛠️ How to Build
+
+### ✅ Requirements
+- Jai compiler (private beta)
+- Windows OS with **DirectX 11.1**
+- GPU supporting **Direct3D Feature Level 11_0** or higher
+- Terminal or shell that supports running `jai` commands
+
+### 🧱 Build Instructions
+
+1. **Install the Jai compiler**
+   - This project requires the Jai language compiler, which is currently in closed early access.
+
+2. **Open a terminal** in the project directory
+
+3. **Generate Bindings for ImGui**
+   - This project uses **Dear ImGui** as the UI layer. You'll need to generate static bindings before building the engine.
+   - Navigate to the ImGui vendor folder:
+     ```sh
+     cd vendor/imgui
+     ```
+   - Run the following Jai commands:
+     ```sh
+     jai generate.jai -- -compile
+     jai generate.jai -- -backend_d3d11
+     ```
+   - This will generate the necessary static library and backend-specific bindings for DirectX 11.
+
+4. **Compile the project**
+   ```sh
+   jai first.jai
+   ```
