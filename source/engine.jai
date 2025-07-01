@@ -1,7 +1,15 @@
-MAX_SPRITES :: 1024;
-MAX_MESH    :: 256;
+MAX_SPRITES  :: 1024;
+MAX_VERTICES :: 25000;
+MAX_MESH     :: 256;
 
 BUFFER_BINDING_CAMERA :: 2;
+
+UI:: struct {
+    toggle_grid: bool;
+    toggle_axis: bool;
+}
+
+g_control_camera: bool;
 
 Engine :: struct {
     screen_width, screen_height : u32;
@@ -18,13 +26,17 @@ Engine :: struct {
     gfx_device: Graphics_Device;
     camera:     Camera; 
 
+    ui:   UI;
+
     rasterizer_state : *ID3D11RasterizerState;
 
     forward_lighting: Forward_Lighting;
 
     vertex_buffer : *ID3D11Buffer;
     index\_buffer : *ID3D11Buffer;
+
     drawcommand   : DrawCommand;
+    line_commands : Line_DrawCommand;
 
     loaded_meshes : Table(string, Skinned_Mesh);
 
@@ -39,8 +51,9 @@ Engine :: struct {
 
     gpu_pixel\_buffer : PS_Constant_Buffer;
 
+    // shaders
     shader_sprite : Shader;
-    shader_text   : Shader;
+    shader_line   : Shader;
     shader_mesh   : Shader;
 }
 
@@ -57,12 +70,26 @@ DrawCommand :: struct {
     indices:  [MAX_SPRITES*6]u32;
 }
 
+Line_DrawCommand :: struct {
+    vertex_buffer: *ID3D11Buffer;
+    index_buffer:  *ID3D11Buffer;
+
+    num_vertices: s32;
+
+    vertices: [MAX_VERTICES]Line_Vertex;
+}
+
 Immediate_Vertex :: struct {
     position:    Vector3;
     color_scale: Vector4;
     uv0:         Vector2;
     normal:      Vector3;
     texture_id:  float;
+}
+
+Line_Vertex :: struct {
+    position:    Vector3;
+    color_scale: Vector4;
 }
 
 immediate_vertex_input_layout :[]D3D11_INPUT_ELEMENT_DESC = .[
@@ -76,9 +103,11 @@ immediate_vertex_input_layout :[]D3D11_INPUT_ELEMENT_DESC = .[
 mesh_vertex_input_layout :[]D3D11_INPUT_ELEMENT_DESC = .[
     .{"POSITION",  0, .R32G32B32_FLOAT,    0,  0, .VERTEX_DATA, 0},
     .{"NORMAL",    0, .R32G32B32_FLOAT,    0, 12, .VERTEX_DATA, 0}
-    // .{"COLOR",     0, .R32G32B32A32_FLOAT, 0, 24, .VERTEX_DATA, 0},
-    // .{"TEXCOORD",  0, .R32G32_FLOAT,       0, 28, .VERTEX_DATA, 0},
-    // .{"TEXTURE_ID",0, .R32_FLOAT,          0, 48, .VERTEX_DATA, 0},
+];
+
+line_vertex_input_layout :[]D3D11_INPUT_ELEMENT_DESC = .[
+    .{"POSITION",  0, .R32G32B32_FLOAT,    0,  0, .VERTEX_DATA, 0},
+    .{"COLOR",     0, .R32G32B32A32_FLOAT, 0, 12, .VERTEX_DATA, 0},
 ];
 
 Material :: struct {
@@ -135,8 +164,9 @@ engine_init    :: (using engine : *Engine) -> bool {
 
 engine_effect_init :: (using engine : *Engine) -> bool {
     success: bool;
-    success = shader_init(*gfx_device, *shader_mesh,   SHADER_MESH, "VS", "PS", *mesh_vertex_input_layout);
-    success = shader_init(*gfx_device, *shader_sprite, SHADER_SPRITE, "VS", "PS", *immediate_vertex_input_layout);
+    success = shader_init(*gfx_device, *shader_mesh,   SHADER_MESH, *mesh_vertex_input_layout);
+    success = shader_init(*gfx_device, *shader_sprite, SHADER_SPRITE, *immediate_vertex_input_layout);
+    success = shader_init(*gfx_device, *shader_line,   SHADER_LINE, *line_vertex_input_layout);
 
     return success;
 }
@@ -147,6 +177,7 @@ engine_resource_init :: (using engine : *Engine) -> bool {
     // vertices_count = xx box_mesh.vertices.count;
     // indices_count  = xx box_mesh.indices.count;
     drawcommands_init(engine);
+    line_commands_init(engine);
 
     forward_lighting_init(*gfx_device, *forward_lighting);
 
@@ -154,7 +185,7 @@ engine_resource_init :: (using engine : *Engine) -> bool {
     cbd.Usage = .DYNAMIC;
     cbd.BindFlags = .CONSTANT_BUFFER;
     cbd.CPUAccessFlags = .WRITE;
-    cbd.ByteWidth = size_of(CBuffer_Perframe);
+    cbd.ByteWidth = size_of(Matrix4);
     HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *cbd, null, *constant_buffer[0]));
     cbd.ByteWidth = size_of(PS_Constant_Buffer);
     HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *cbd, null, *constant_buffer[1]));
@@ -191,12 +222,17 @@ engine_update  :: (using engine: *Engine) {
 
     renderer_clear(*g_engine.gfx_device);
     camera_update(*camera, 0.01667);
-    gfx_set_shader(*gfx_device, *shader_mesh);
-    gfx_set_projection(*gfx_device, constant_buffer[BUFFER_BINDING_CAMERA], *shader_mesh, *camera);
+    ui_update(*ui);
 
+    gfx_set_shader(*gfx_device, *shader_line);
+    gfx_set_projection(*gfx_device, constant_buffer[BUFFER_BINDING_CAMERA], *camera);
+    if ui.toggle_axis draw_axis(*gfx_device, *line_commands);
+    if ui.toggle_grid draw_grid(*gfx_device, *line_commands);
+    gfx_flush_line_commands(*gfx_device, *line_commands);
+
+    gfx_set_shader(*gfx_device, *shader_mesh);
     // forward lighting pass
     foward_lighting_pass(*gfx_device, *forward_lighting);
-
     gfx_draw_mesh(*gfx_device, table_find_pointer(*loaded_meshes, "Grayfish"));
 
     // engine_scene_update(*g_engine, 0.1667);
@@ -388,6 +424,18 @@ drawcommands_init :: (using engine: *Engine) {
     D3D11SetDebugObjectName(gfx_device.d3d_device, index\_buffer, "DrawCommand_IndexBuffer");
 }
 
+line_commands_init :: (using engine: *Engine) {
+    vbd : D3D11_BUFFER_DESC;
+    vbd.Usage = .DYNAMIC;
+    vbd.ByteWidth = cast(u32) (size_of(Line_Vertex) * MAX_VERTICES);
+    vbd.BindFlags = .VERTEX_BUFFER;
+    vbd.CPUAccessFlags = .WRITE;
+
+    HR(ID3D11Device_CreateBuffer(gfx_device.d3d_device, *vbd, null, *line_commands.vertex_buffer));
+
+    D3D11SetDebugObjectName(gfx_device.d3d_device, vertex_buffer, "LineCommands_VertexBuffer");
+}
+
 find_and_load_meshes :: inline (using engine: *Engine) {
     mesh : Skinned_Mesh;
 
@@ -398,4 +446,30 @@ find_and_load_meshes :: inline (using engine: *Engine) {
     } else {
         log_error("mesh_load_from_file");
     }
+}
+
+draw_axis :: inline (gfx_device: *Graphics_Device, commands: *Line_DrawCommand) {
+
+    gfx_draw_line(gfx_device, commands, .{}, .{x=100}, .{x=1, w=1});
+    gfx_draw_line(gfx_device, commands, .{}, .{y=100}, .{y=1, w=1});
+    gfx_draw_line(gfx_device, commands, .{}, .{z=100}, .{z=1, w=1});
+}
+
+draw_grid :: inline (gfx_device: *Graphics_Device, commands: *Line_DrawCommand) {
+
+    for i: -10..10 {
+        gfx_draw_line(gfx_device, commands, .{xx i * 10.0, 0, -100}, .{xx i * 10.0, 0, 100}, .{0.4, 0.4, 0.4, 1});
+    }
+
+    for i: -10..10 {
+        gfx_draw_line(gfx_device, commands, .{-100, 0, xx i * 10.0}, .{100, 0, xx i * 10.0}, .{0.4, 0.4, 0.4, 1});
+    }
+}
+
+ui_update :: (using state: *UI) {
+    if IMGUI.Begin("UI") {
+        IMGUI.Checkbox("Toggle Axis", *toggle_axis);
+        IMGUI.Checkbox("Toggle Grid Line", *toggle_grid);
+    }
+    IMGUI.End();
 }

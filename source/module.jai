@@ -77,6 +77,9 @@ HR :: inline (hr: HRESULT, $call := #caller_code, loc :=  #caller_location) -> H
     return S_OK;
 }
 
+// -------------------------------------------------------------
+// DirectX
+// -------------------------------------------------------------
 D3D11SetDebugObjectName :: inline (device : *ID3D11Device, resource: *ID3D11DeviceChild, name: string) {
     #if DEBUG {
         HR(ID3D11Device_SetPrivateData(device, *uid(WKPDID_D3DDebugObjectName), xx name.count, name.data));
@@ -86,6 +89,31 @@ D3D11SetDebugObjectName :: inline (device : *ID3D11Device, resource: *ID3D11Devi
 D3D11SetDebugObjectName :: inline (device : *ID3D11Device, resource: *IDXGIObject, name: string) {
     #if DEBUG {
         HR(ID3D11Device_SetPrivateData(device, *uid(WKPDID_D3DDebugObjectName), xx name.count, name.data));
+    }
+}
+
+// -------------------------------------------------------------
+// Window
+// -------------------------------------------------------------
+show_cursor :: inline () {
+    #if OS == .WINDOWS {
+        win32 :: #import "Windows";
+        win32.ShowCursor(1);
+    }
+}
+
+hide_cursor :: inline () {
+    #if OS == .WINDOWS {
+        win32 :: #import "Windows";
+        win32.ShowCursor(0);
+    }
+}
+
+set_mouse_pointer_position :: inline (x: int, y: int) {
+    #if OS == .WINDOWS {
+        user32 :: #system_library "User32";
+        SetCursorPos :: (x: s32, y: s32) -> s32 #foreign user32;
+        SetCursorPos(xx x, xx y);
     }
 }
 

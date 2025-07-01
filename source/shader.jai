@@ -7,16 +7,16 @@ Shader :: struct {
 }
 
 shader_init :: (gfx_device : *Graphics_Device, 
-                using shader : *Shader, source : string, vertex_entrypoint: string, pixel_entrypoint: string, input_layout: *[]D3D11_INPUT_ELEMENT_DESC) -> bool {
+                using shader : *Shader, source : string, input_layout: *[]D3D11_INPUT_ELEMENT_DESC) -> bool {
 
-    vs := compile_shader(source, vertex_entrypoint, "vs_5_0");
+    vs := compile_shader(source, "VS", "vs_5_0");
     defer free(vs);
     assert(vs.data != null);
     HR(ID3D11Device_CreateVertexShader(gfx_device.d3d_device, vs.data, cast(u64) vs.count, null, *vertex_shader));
 
     HR(ID3D11Device_CreateInputLayout(gfx_device.d3d_device, input_layout.data, cast(u32) input_layout.count, vs.data, cast(u64) vs.count, *vertex_layout));
 
-    ps := compile_shader(source, pixel_entrypoint, "ps_5_0");
+    ps := compile_shader(source, "PS", "ps_5_0");
     defer free(ps);
     assert(ps.data != null);
     HR(ID3D11Device_CreatePixelShader(gfx_device.d3d_device, ps.data, cast(u64) ps.count, null, *pixel_shader));
@@ -308,6 +308,35 @@ float4 PS(Vertex_Out pin) : SV_Target {
 
 HLSL
 
+SHADER_LINE :: #string HLSL
+
+struct Vertex_In {
+    float3 position     : POSITION;
+    float4 color_scale  : COLOR; 
+};
+
+struct Vertex_Out {
+    float4 position:    SV_Position;
+    float4 color:       COLOR;
+};
+
+cbuffer CBuffer_Perframe : register(b0) {
+    matrix g_ViewProjection;
+};
+
+Vertex_Out VS(Vertex_In vin) {
+    Vertex_Out vout;
+    vout.position  = mul(float4(vin.position, 1.0), g_ViewProjection);
+    vout.color     = vin.color_scale;
+    return vout;
+}
+
+float4 PS(Vertex_Out pin) : SV_Target {
+    return pin.color;
+}
+
+HLSL
+
 SHADER_MESH :: #string HLSL
 
 struct Vertex_In {
@@ -315,16 +344,13 @@ struct Vertex_In {
     float3 normal       : NORMAL;
 };
 
-// float4 joints       : JOINTS; 
-// float4 weights      : WEIGHTS;
-
 struct Vertex_Out {
     float4 position:    SV_Position;
     float3 normal:      NORMAL;
 };
 
 cbuffer CBuffer_Perframe : register(b0) {
-    matrix g_ViewProj;
+    matrix g_ViewProjection;
 };
 
 cbuffer CBuffer_World    : register(b1) {
@@ -339,7 +365,7 @@ cbuffer CBuffer_Hemispheric : register(b2) {
 Vertex_Out VS(Vertex_In vin) {
     Vertex_Out vout;
     vout.position  = mul(float4(vin.position, 1.0), g_World);
-    vout.position  = mul(vout.position, g_ViewProj);
+    vout.position  = mul(vout.position, g_ViewProjection);
     vout.normal    = vin.normal;
     return vout;
 }

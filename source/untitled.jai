@@ -21,7 +21,16 @@ main :: () {
             if it.type == .QUIT then g_should_quit = true;
             if it.type == .KEYBOARD {
                 if it.key_pressed if it.key_code == .ESCAPE g_should_quit = true;
+                if it.key_pressed if it.key_code == .SPACEBAR set_camera_control(!g_control_camera);
             }
+        }
+
+        if !input_application_has_focus && g_control_camera
+            set_camera_control(false);
+        
+        if g_control_camera {
+            x, y, w, h := get_dimensions(g_engine.hwnd, false);
+            set_mouse_pointer_position(w/2, h/2);
         }
 
         engine_update(*g_engine);

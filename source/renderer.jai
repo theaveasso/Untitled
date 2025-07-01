@@ -227,25 +227,18 @@ renderer_resize :: (using rdsys : *Graphics_Device, width : int, height : int, e
 }
 
 gfx_set_projection2d :: (using gfx_device : *Graphics_Device, 
-                         projection: *ID3D11Buffer, render_target_width: float, render_target_height: float) {
-    data := CBuffer_Perframe.{
-        projection2d=orthographic_projection_matrix(0, render_target_width*1, render_target_height, 0, -1.0, 1.0)
-    };
+                         buffer: *ID3D11Buffer, render_target_width: float, render_target_height: float) {
 
-    mapped_data : D3D11_MAPPED_SUBRESOURCE;
-    HR(ID3D11DeviceContext_Map(d3d_context, projection, 0, .WRITE_DISCARD, 0, *mapped_data));
-    memcpy(mapped_data.pData, *data, size_of(CBuffer_Perframe));
-    ID3D11DeviceContext_Unmap(d3d_context, projection, 0);
+    viewproj :=orthographic_projection_matrix(0, render_target_width*1, render_target_height, 0, -1.0, 1.0);
+    ID3D11DeviceContext_VSSetConstantBuffers(d3d_context, 0, 1, *buffer);
+    gfx_map_buffer(gfx_device, buffer, *viewproj, size_of(Matrix4));
 }
 
-gfx_set_projection :: (using gfx_device: *Graphics_Device, projection: *ID3D11Buffer,
-                       shader: *Shader, camera: *Camera) {
-    ID3D11DeviceContext_VSSetConstantBuffers(d3d_context, 0, 1, *projection);
+gfx_set_projection :: (using gfx_device: *Graphics_Device, 
+                       buffer: *ID3D11Buffer, camera: *Camera) {
 
-    mapped_data : D3D11_MAPPED_SUBRESOURCE;
-    HR(ID3D11DeviceContext_Map(d3d_context, projection, 0, .WRITE_DISCARD, 0, *mapped_data));
-    memcpy(mapped_data.pData, *camera.viewproj_matrix, size_of(Matrix4));
-    ID3D11DeviceContext_Unmap(d3d_context, projection, 0);
+    ID3D11DeviceContext_VSSetConstantBuffers(d3d_context, 0, 1, *buffer);
+    gfx_map_buffer(gfx_device, buffer, *camera.viewproj_matrix, size_of(Matrix4));
 }
 
 gfx_set_shader :: (using gfx_device: *Graphics_Device, shader: *Shader) {
@@ -281,6 +274,20 @@ gfx_flush :: (using gfx_device: *Graphics_Device, dc: *DrawCommand) {
     ID3D11DeviceContext_DrawIndexed(d3d_context, xx dc.num_indices, 0, 0);
     dc.num_vertices = 0;
     dc.num_indices  = 0;
+}
+
+gfx_flush_line_commands :: (using gfx_device: *Graphics_Device, commands: *Line_DrawCommand) {
+
+    stride : u32 = size_of(Line_Vertex);
+    offset : u32 = 0; 
+    ID3D11DeviceContext_IASetVertexBuffers(d3d_context, 0, 1, *commands.vertex_buffer, *stride, *offset);
+    ID3D11DeviceContext_IASetPrimitiveTopology(d3d_context, .LINELIST);
+
+    gfx_map_buffer(gfx_device, commands.vertex_buffer, commands.vertices.data, size_of(Line_Vertex) * cast(u32) commands.num_vertices);
+
+    ID3D11DeviceContext_Draw(d3d_context, xx commands.num_vertices, 0);
+
+    commands.num_vertices = 0;
 }
 
 gfx_draw_quad :: (gfx_device: *Graphics_Device, dc: *DrawCommand,
@@ -327,6 +334,15 @@ gfx_draw_quad :: (gfx_device: *Graphics_Device, dc: *DrawCommand,
     dc.num_indices  += 6;
 }
 
+gfx_draw_line :: (gfx_device: *Graphics_Device,
+                  commands: *Line_DrawCommand, p1: Vector3, p2: Vector3, tint:= Vector4.{1.0, 1.0, 1.0, 1.0}) {
+    CheckVerticesSpace(2, commands);
+    gfx_put_vertex(*v[0], p1, tint);
+    gfx_put_vertex(*v[1], p2, tint);
+
+    commands.num_vertices += 2;
+}
+
 gfx_draw_mesh :: (using gfx_device: *Graphics_Device, 
                   mesh: *Skinned_Mesh, world:= Matrix4_Identity) {
 
@@ -363,6 +379,9 @@ gfx_map_buffer :: (using gfx_device: *Graphics_Device,
 }
 
 #scope_file
+gfx_line_vertex_pointer :: inline (command: *Line_DrawCommand) -> *Line_Vertex {
+    return command.vertices.data + command.num_vertices;
+}
 
 gfx_immediate_vertex_pointer :: inline (dc: *DrawCommand) -> *Immediate_Vertex {
     return dc.vertices.data + dc.num_vertices;
@@ -389,6 +408,15 @@ gfx_put_vertex :: inline (using vertex: *Immediate_Vertex, p: Vector3, color: Ve
     texture_id   = cast(float) texture_handle;
 }
 
+gfx_put_vertex :: inline (using vertex: *Line_Vertex, p: Vector3, color: Vector4) {
+    position     = p;
+    color_scale  = color;
+}
+
+
+CheckVerticesSpace :: (n: s32, command: *Line_DrawCommand) #expand {
+    `v := gfx_line_vertex_pointer(command);
+}
 
 CheckVerticesSpace :: (n: s32, dc: *DrawCommand) #expand {
     `v := gfx_immediate_vertex_pointer(dc);

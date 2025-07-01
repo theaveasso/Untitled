@@ -26,12 +26,15 @@ camera_update :: (using camera: *Camera, dt: float) {
 
     mouse_delta = xy (xx mouse_delta_x, xx mouse_delta_y);
     move_speed = FLY_SPEED;
-    move_speed *= FLY_SPEED;
 
-    move_input.x = cast(float) is_key_down(xx #char "D") - cast(float) is_key_down(xx #char "A");
-    move_input.y = cast(float) is_key_down(xx #char "E") - cast(float) is_key_down(xx #char "Q");
-    move_input.z = cast(float) is_key_down(xx #char "W") - cast(float) is_key_down(xx #char "S");
-    move_input = rotate(unit_vector(move_input), rotation);
+    if g_control_camera {
+        if is_key_down(.SHIFT) then move_speed *= 2;
+        move_speed *= dt;
+        move_input.x = cast(float) is_key_down(xx #char "D") - cast(float) is_key_down(xx #char "A");
+        move_input.y = cast(float) is_key_down(xx #char "E") - cast(float) is_key_down(xx #char "Q");
+        move_input.z = cast(float) is_key_down(xx #char "S") - cast(float) is_key_down(xx #char "W");
+        move_input = rotate(unit_vector(move_input), rotation);
+    }
 
     position += move_input * move_speed;
 
@@ -53,4 +56,12 @@ camera_update :: (using camera: *Camera, dt: float) {
 
     projection_matrix = make_projection_matrix(fov * PI / 180.0, aspect, 0.1, 1000.0, is_left_hand=true);
     viewproj_matrix = projection_matrix * view_matrix;
+}
+
+set_camera_control :: inline (control: bool) {
+    g_control_camera = control;
+    if g_control_camera 
+        hide_cursor();
+    else 
+        show_cursor();
 }
