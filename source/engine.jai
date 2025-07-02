@@ -51,9 +51,6 @@ Engine :: struct {
     vertices_count : u32;
     indices\_count : u32;
 
-    point\     _light : Point_Light;
-    spot\      _light : Spot_Light;  
-
     gpu_pixel\_buffer : PS_Constant_Buffer;
 
     // shaders
@@ -190,8 +187,8 @@ engine_resource_init :: (using engine : *Engine) -> bool {
 
     forward_lighting_init(*gfx_device, *forward_lighting);
 
-    success = cbuffer_create(*gfx_device, *constant_buffer[CBUFFER_VIEWPROJECTION], .CONSTANT_BUFFER, size_of(Matrix4));
-    success = cbuffer_create(*gfx_device, *constant_buffer[CBUFFER_CAMERA], .CONSTANT_BUFFER, size_of(CBuffer_Camera));
+    success = cbuffer_create2(*gfx_device, *constant_buffer[CBUFFER_VIEWPROJECTION], .CONSTANT_BUFFER, size_of(Matrix4));
+    success = cbuffer_create2(*gfx_device, *constant_buffer[CBUFFER_CAMERA], .CONSTANT_BUFFER, size_of(CBuffer_Camera));
 
     texture_load_from_file(*gfx_device, *g_dirextx_texture, "resources/rock_wall_13_diff_4k.jpg");
     find_and_load_meshes(engine);
@@ -345,7 +342,7 @@ engine_scene_update :: (using engine : *Engine, dt : float) {
 
     // model := translate(Matrix4_Identity, .{tx, ty, 5}) * rotation_matrix(Matrix4, rotation) * make_scale_matrix4(xyz(scale));
     view := make_look_at_matrix(.{0, 0, -5}, .{0, 0, 0}, .{0, 1, 0}, false);
-    proj := make_projection_matrix(25 * PI / 180.0, xx ASPECT, 0.1, 1000);
+    // proj := make_projection_lh(1280, 720, 0.1, 1000);
 
     using g_engine.gfx_device;
 

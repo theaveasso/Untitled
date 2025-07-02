@@ -94,9 +94,9 @@ mesh_load_from_file :: (mesh: *Skinned_Mesh, filename: string) -> bool {
 mesh_reset :: (gfx_device: *Graphics_Device, using mesh: *Skinned_Mesh) -> bool {
     success: bool;
 
-    success = cbuffer_create(gfx_device, *buffer_vertex, .VERTEX_BUFFER, cast(u32) (size_of(Mesh_Vertex) * vertices.count));
-    success = cbuffer_create(gfx_device, *buffer_index,  .INDEX_BUFFER, cast(u32) (size_of(u32) * indices.count));
-    success = cbuffer_create(gfx_device, *buffer_mesh,   .CONSTANT_BUFFER, cast(u32) size_of(CBuffer_Mesh));
+    success = cbuffer_create2(gfx_device, *buffer_vertex, .VERTEX_BUFFER, cast(u32) (size_of(Mesh_Vertex) * vertices.count));
+    success = cbuffer_create2(gfx_device, *buffer_index,  .INDEX_BUFFER, cast(u32) (size_of(u32) * indices.count));
+    success = cbuffer_create2(gfx_device, *buffer_mesh,   .CONSTANT_BUFFER, cast(u32) size_of(CBuffer_Mesh));
 
     D3D11SetDebugObjectName(gfx_device.d3d_device, buffer_vertex,   "Skinned_Mesh_VertexBuffer");
     D3D11SetDebugObjectName(gfx_device.d3d_device, buffer_index,    "Skinned_Mesh_IndexBuffer");

@@ -1,4 +1,4 @@
-cbuffer_create :: (gfx_device: *Graphics_Device, 
+cbuffer_create2 :: (gfx_device: *Graphics_Device, 
                    buffer: **ID3D11Buffer, bind_flags: D3D11_BIND_FLAG, size: u32, data: *void = null) -> bool {
 
     cbd : D3D11_BUFFER_DESC;

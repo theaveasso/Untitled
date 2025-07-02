@@ -6,11 +6,15 @@ CBuffer_Hemispheric :: struct {
 Forward_Lighting :: struct {
     CBUFFER_HEMISPHERIC :: 0;
     CBUFFER_DIRECTIONAL :: 1;
+    CBUFFER_POINT       :: 2;
+    CBUFFER_SPOT        :: 3;
 
-    constant_buffer: [5]*ID3D11Buffer;
+    constant_buffer: [4]*ID3D11Buffer;
 
-    hemispheric_ambient: CBuffer_Hemispheric;
-    directional_light:   CBuffer_DirectionalLight;
+    hemispheric_ambient:CBuffer_Hemispheric;
+    directional_light:  CBuffer_DirectionalLight;
+    point_light:        CBuffer_DirectionalLight;
+    spot_light:         CBuffer_DirectionalLight;
 }
 
 CBuffer_DirectionalLight :: struct {
@@ -21,7 +25,7 @@ CBuffer_DirectionalLight :: struct {
     pad     : float;
 }
 
-Point_Light :: struct {
+CBuffer_PointLight :: struct {
     ambient : Vector4;
     diffuse : Vector4;
     specular: Vector4;
@@ -33,7 +37,7 @@ Point_Light :: struct {
     pad     : float;
 }
 
-Spot_Light :: struct {
+CBuffer_SpotLight :: struct {
     ambient : Vector4;
     diffuse : Vector4;
     specular: Vector4;
@@ -61,8 +65,10 @@ forward_lighting_init :: (gfx_device: *Graphics_Device,
     directional_light.specular = xyzw(1.0, 1.0, 1.0, 1.0);   // white specular highlights
     directional_light.direction = normalize(xyz(-0.5, -1.0, -0.3)); // light shining diagonally down
 
-    success = cbuffer_create(gfx_device, *constant_buffer[CBUFFER_HEMISPHERIC], .CONSTANT_BUFFER, size_of(CBuffer_Hemispheric), *hemispheric_ambient);
-    success = cbuffer_create(gfx_device, *constant_buffer[CBUFFER_DIRECTIONAL], .CONSTANT_BUFFER, size_of(CBuffer_DirectionalLight));
+    success = cbuffer_create2(gfx_device, *constant_buffer[CBUFFER_HEMISPHERIC], .CONSTANT_BUFFER, size_of(CBuffer_Hemispheric), *hemispheric_ambient);
+    success = cbuffer_create2(gfx_device, *constant_buffer[CBUFFER_DIRECTIONAL], .CONSTANT_BUFFER, size_of(CBuffer_DirectionalLight));
+    success = cbuffer_create2(gfx_device, *constant_buffer[CBUFFER_POINT      ], .CONSTANT_BUFFER, size_of(CBuffer_PointLight));
+    success = cbuffer_create2(gfx_device, *constant_buffer[CBUFFER_SPOT       ], .CONSTANT_BUFFER, size_of(CBuffer_SpotLight));
 
     return success;
 }

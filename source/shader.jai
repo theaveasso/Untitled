@@ -465,6 +465,7 @@ HLSL
 
 compile_shader :: (source: string, entry_point: string, shader_model: string, loc := #caller_location) -> string {
 
+
     flags := D3DCOMPILE.ENABLE_STRICTNESS;
     #if DEBUG {
         flags |= .DEBUG;

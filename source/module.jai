@@ -16,11 +16,15 @@ IMGUI :: #import, dir "../vendor/imgui";
 #import "stb_image";
 #import "stb_image_write";
 #import "stb_image_resize";
+#import "Apollo_Time";
 
 #load "Input/module.jai";
 
 ImDrawData      :: IMGUI.ImDrawData;
 ImTextureData   :: IMGUI.ImTextureData;
+
+// common
+#load "cpu_timer.jai";
 
 #load "engine.jai";
 #load "renderer.jai";
@@ -33,7 +37,7 @@ ImTextureData   :: IMGUI.ImTextureData;
 #load "texture.jai";
 #load "bitmap.jai";
 
-#load "backend/buffer.jai";
+#load "backend/module.jai";
 
 ASSERT_ON_FAIL  :: true;
 BREAK_ON_ERROR  :: false; 

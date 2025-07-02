@@ -74,3 +74,30 @@ make_projection_matrix :: (fov_vertical: float, aspect_ratio_horizontal_over_ver
 
     return result;
 }
+
+make_perspective_lh :: inline (view_width: float, view_height: float, z_near: float, z_far: float) -> Matrix4 {
+    m := Matrix4_Identity;
+
+    // tan_theta := tan(fov_vertical * 0.5);
+    // cot_theta := 1 / tan_theta;
+
+    // f := z_far;
+    // n := z_near;
+    // denom := 1 / (f - n);
+
+    // m._11 = cot_theta / aspect_ratio_horizontal_over_vertical;
+    // m._22 = cot_theta;
+    // m._33 = f / (f - n);
+    // m._43 = -n * f / (f - n);
+    // m._34 = 1;
+    // m._44 = 0;
+
+    m._11 = (2.0 * z_near) / view_width;
+    m._22 = (2.0 * z_near) / view_height;
+    m._33 = z_far / (z_far - z_near);
+    m._43 = (-z_near * z_far) / (z_far - z_near);
+    m._34 = 1;
+    m._44 = 0;
+
+    return m;
+}

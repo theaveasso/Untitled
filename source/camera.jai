@@ -14,6 +14,7 @@ Camera :: struct {
 
 
     transform:=         Matrix4_Identity;
+
     view_matrix:=       Matrix4_Identity;
     projection_matrix:= Matrix4_Identity;
     viewproj_matrix:=   Matrix4_Identity;
@@ -60,9 +61,40 @@ camera_update :: (using camera: *Camera, dt: float) {
     success:, view_matrix = inverse(transform);
     if !success log_error("Unable to invert the transform update_flying_camera!");
 
-    projection_matrix = make_projection_matrix(fov * PI / 180.0, aspect, 0.1, 1000.0, is_left_hand=true);
+    projection_matrix = make_projection_matrix(55 * PI / 180, aspect, 0.1, 1000.0, is_left_hand=true);
     viewproj_matrix = projection_matrix * view_matrix;
 }
+
+camerafp_look_at :: (using camera: *Camera, _pos: Vector3, _target: Vector3, _up: Vector3) {
+}
+
+camerafp_look_to :: (using camera: *Camera, _pos: Vector3, _to: Vector3, _up: Vector3) {
+}
+
+camerafp_strafe :: (using camera: *Camera, dist: float) {
+}
+
+camerafp_walk :: (using camera: *Camera, dt: float) {
+}
+
+camerafp_move_forward :: (using camera: *Camera, dist: float) {
+}
+
+camerafp_pitch :: (using camera: *Camera, radian: float) {
+}
+
+camerafp_rotate_y :: (using camera: *Camera, radian: float) {
+}
+
+camera3p_rotate_x :: (using camera: *Camera, radian: float) {
+} 
+
+camera3p_rotate_y :: (using camera: *Camera, radian: float) {
+} 
+
+camera3p_approach :: (using camera: *Camera, dist: float) {
+}
+
 
 set_camera_control :: inline (control: bool) {
     g_control_camera = control;

@@ -9,10 +9,41 @@ g_window_height : s32 = xx VPIXELS;
 g_should_quit := false;
 WANTED_MSAA :: 8;
 
+g_cputimer : CPU_Timer;
+
 main :: () {
     log(". Untitled 3D Game Engine ... Powered by JAI <3 d3d11!\n\n");
 
-    ok_or_exit(engine_init(*g_engine), "Engine Initialize failed.");
+    if !engine_init(*g_engine) {
+        log_error("engine_init failed\n");
+        exit(3);
+    }
+
+    vshader: Vertex_Shader;
+    sbindable_create(*g_engine.gfx_device, *vshader, cast(*void)temp_c_string(SHADER_MESH));
+
+    input_layout: Input_Layout;
+    input_layout_desc : Input_Layout_Desc = .{
+        layout= .[
+            .{"POSITION",  0, .R32G32B32_FLOAT,    0,  0, .VERTEX_DATA, 0},
+            .{"NORMAL",    0, .R32G32B32_FLOAT,    0, 12, .VERTEX_DATA, 0}
+        ],
+        bytecode= vshader.bytecode
+    };
+    sbindable_create(*g_engine.gfx_device, *input_layout, cast(*void)*input_layout_desc);
+
+
+    // desc := Input_Layout_Desc.{
+    //     layout= .[
+    //        .{"POSITION",  0, .R32G32B32_FLOAT,    0,  0, .VERTEX_DATA, 0},
+    //        .{"COLOR",     0, .R32G32B32A32_FLOAT, 0, 12, .VERTEX_DATA, 0},
+    //        .{"TEXCOORD",  0, .R32G32_FLOAT,       0, 28, .VERTEX_DATA, 0},
+    //     ]
+    // };
+    // sbindable_create(*g_engine.gfx_device, *test3, cast(*void)*desc);
+
+    // input_layout : Input_Layout(Matrix4); 
+    // bindable_create(*g_engine.gfx_device, *input_layout, cast(*void) *desc);
 
     while !g_should_quit {
         reset_temporary_storage();
@@ -38,14 +69,6 @@ main :: () {
     }
 }
 
-// Input :: #import "Input";
 #load "module.jai";
-
-ok_or_exit  :: inline (success: bool, err_msg_format: string, args: ..Any, flags := Log_Flags.ERROR, exit_code : s32 = 1) {
-    if success return;
-
-    log(err_msg_format, ..args, flags=flags);
-    exit(exit_code);
-} @PrintLike
 
 DEBUG :: true;
