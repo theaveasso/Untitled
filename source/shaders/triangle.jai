@@ -1,36 +1,33 @@
 TRIANGLE_SHADER_TEXT :: #string HLSL 
 
+struct VSInput {
+    float2 position : POSITION;
+    float2 uv       : TEXCOORD;
+};
+
 struct PSInput
 {
     float4 position : SV_POSITION;
-    float4 color    : COLOR;
+    float2 texcoord : TEXCOORD;
 };
 
-static float2 positions[3] = {
-    float2( 0.0,  0.5),
-    float2( 0.5, -0.5),
-    float2(-0.5, -0.5)
-};
+// Texture2D       g_texture: register(t0);
+// SamplerState    g_sampler: register(s0);
 
-static float3 colors[3] = {
-    float3(1.0, 0.0, 0.0),
-    float3(0.0, 1.0, 0.0),
-    float3(0.0, 0.0, 1.0)
-};
-
-
-PSInput VS(uint vertex_id: SV_VERTEXID)
+PSInput VSMain(VSInput vin)
 {
     PSInput result;
-    result.position = float4(positions[vertex_id], 0.0, 1.0);
-    result.color    = float4(colors[vertex_id], 1.0);
+    result.position = float4(vin.position, 0.0, 1.0);
+    result.texcoord = vin.uv;
 
     return result;
 }
 
-float4 PS(PSInput input) : SV_TARGET
+float4 PSMain(PSInput input) : SV_TARGET
 {
-    return input.color;
+    // float4 col = g_texture.Sample(g_sampler, input.texcoord);
+    // if (col.a == 0) discard;
+    return float4(1.0f, 1.0f, 1.0f, 1.0f);
 }
 
 HLSL

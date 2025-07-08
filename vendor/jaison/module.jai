@@ -154,7 +154,7 @@ parse_string :: (str: string) -> result: string, remainder: string, success: boo
 	}
 
 	length := inside.data - str.data - 1;
-	result := slice(str, 1, length);
+	ok := slice(str, 1, length);
 	if needsUnescape {
 		success: bool;
 		result, success = unescape(result);
@@ -168,7 +168,7 @@ parse_string :: (str: string) -> result: string, remainder: string, success: boo
 }
 
 unescape :: (str: string) -> result: string, success: bool {
-	result := alloc_string(str.count);
+	ok := alloc_string(str.count);
 	rc := 0;
 	for i: 0..str.count-1 {
 		if str[i] != #char "\\" {

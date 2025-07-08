@@ -1,6 +1,6 @@
 DEBUG          :: true;
 ASSERT_ON_FAIL :: #run ifx DEBUG then true else false;
-BREAK_ON_ERROR :: #run ifx DEBUG then true else false;
+BREAK_ON_ERROR :: false;
 
 FRAME_COUNT :: 2;
 
@@ -26,23 +26,12 @@ main :: () {
             }
         }
 
+        for Input.get_window_resizes() {
+            gfx_update_window(*engine);
+        }
+
         engine_update(*engine);
     }
-
 }
 
-#import "Compiler";
-#import "Basic";
-#import "Windows";
-
-Window :: #import "Window_Creation";
-Input  :: #import "Input";
-
-#import "dxgi";
-#import "d3d12"()(INCLUDE_DEBUG_BINDINGS = true);
-#import "d3d_compiler";
-
-#load "engine.jai";
-#load "graphics.jai";
-#load "backend/module.jai";
-#load "shaders/module.jai";
+#load "module.jai";
