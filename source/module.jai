@@ -30,10 +30,10 @@ Pipeline_Type :: enum {
     COMPUTE;
 }
 
-Command_Type :: enum {
-    GRAPHICS;
-    COMPUTE;
-    COPY;
+Command_Type :: enum u8 {
+    GRAPHICS :: 0;
+    COMPUTE  :: 1;
+    COPY     :: 2;
 }
 
 Resource_Type :: enum u8 {
@@ -66,6 +66,8 @@ Default_Border_Color : [4]float : .[0.0, 0.0, 0.0, 0.0];
 
 Target_Shader_Models : [6]*u8 = .["vs_5_1", "ps_5_1", "cs_5_1", "gs_5_1", "ds_5_1", "hs_5_1"];
 
+MAX_SWAPCHAIN_BUFFER_COUNT :: 3;
+
 #import "Compiler";
 #import "Basic";
 #import "Windows";
@@ -81,6 +83,5 @@ Input  :: #import "Input";
 #import "d3d_compiler";
 
 #load "engine.jai";
-#load "graphics.jai";
 #load "backend/module.jai";
 #load "shaders/module.jai";

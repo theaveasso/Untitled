@@ -8,16 +8,13 @@ D3D12CommandList :: struct {
     current_bind_compute\_root_signature: *D3D12Root_Signature;
 }
 
-d3d12_cmd_list_init :: (device: *ID3D12Device, using _cmdlist: *D3D12CommandList) -> bool {
+d3d12_cmd_list_init :: (using _device: *D3D12Device, using _cmdlist: *D3D12CommandList) -> bool {
 
     ok: bool;
     if allocator.type == {
-        case .GRAPHICS;
-            ok = HR(ID3D12Device_CreateCommandList(device, 0, .DIRECT, allocator.allocator, null, *uid(ID3D12GraphicsCommandList_UUID), xx *cmdlist));
-        case .COMPUTE;
-            ok = HR(ID3D12Device_CreateCommandList(device, 0, .COMPUTE, allocator.allocator, null, *uid(ID3D12GraphicsCommandList_UUID), xx *cmdlist));
-        case .COPY;
-            ok = HR(ID3D12Device_CreateCommandList(device, 0, .COPY, allocator.allocator, null, *uid(ID3D12GraphicsCommandList_UUID), xx *cmdlist));
+        case .GRAPHICS; ok = HR(ID3D12Device_CreateCommandList(device, 0, .DIRECT, allocator.allocator, null, *uid(ID3D12GraphicsCommandList_UUID), xx *cmdlist));
+        case .COMPUTE;  ok = HR(ID3D12Device_CreateCommandList(device, 0, .COMPUTE, allocator.allocator, null, *uid(ID3D12GraphicsCommandList_UUID), xx *cmdlist));
+        case .COPY;     ok = HR(ID3D12Device_CreateCommandList(device, 0, .COPY, allocator.allocator, null, *uid(ID3D12GraphicsCommandList_UUID), xx *cmdlist));
     }
 
     return ok;
@@ -65,8 +62,8 @@ d3d12_cmd_list_bind_graphics_root_signature :: inline (using _cmdlist: *D3D12Com
 d3d12_cmd_list_bind_graphics_sampler :: inline (using _cmdlist: *D3D12CommandList, root_index: u32, sampler: *D3D12Sampler) { ID3D12GraphicsCommandList_SetGraphicsRootDescriptorTable(cmdlist, root_index, sampler.sampler.gpu); }
 
 d3d12_cmd_list_bind_heap    :: inline (using _cmdlist: *D3D12CommandList, heaps: **ID3D12DescriptorHeap, counts: u32 = 1) { ID3D12GraphicsCommandList_SetDescriptorHeaps(cmdlist, counts, heaps); }
-d3d12_cmd_list_bind_vbuffer :: inline (using _cmdlist: *D3D12CommandList, buffer: *Buffer) { ID3D12GraphicsCommandList_IASetVertexBuffers(cmdlist, 0, 1, *buffer.vbv); }
-d3d12_cmd_list_bind_ibuffer :: inline (using _cmdlist: *D3D12CommandList, buffer: *Buffer) { ID3D12GraphicsCommandList_IASetIndexBuffer(cmdlist, *buffer.ibv); }
+d3d12_cmd_list_bind_vbuffer :: inline (using _cmdlist: *D3D12CommandList, buffer: *D3D12Buffer) { ID3D12GraphicsCommandList_IASetVertexBuffers(cmdlist, 0, 1, *buffer.vbv); }
+d3d12_cmd_list_bind_ibuffer :: inline (using _cmdlist: *D3D12CommandList, buffer: *D3D12Buffer) { ID3D12GraphicsCommandList_IASetIndexBuffer(cmdlist, *buffer.ibv); }
 d3d12_cmd_list_bind_rt      :: inline (using _cmdlist: *D3D12CommandList, buffer: *Swapchain_Buffer) { ID3D12GraphicsCommandList_OMSetRenderTargets(cmdlist, 1, *buffer.rtvs[0].cpu, .FALSE, null); }
 
 d3d12_cmd_list_set_viewport :: inline (using _cmdlist: *D3D12CommandList, viewport: *D3D12_VIEWPORT) { ID3D12GraphicsCommandList_RSSetViewports(cmdlist, 1, viewport); }
@@ -77,9 +74,9 @@ d3d12_cmd_list_clear_rtv    :: inline (using _cmdlist: *D3D12CommandList, buffer
 
 d3d12_cmd_list_draw_index_instanced :: inline (using _cmdlist: *D3D12CommandList, index_count_per_instance: u32, instance_count: u32, start_index_location: u32, base_vertex_location: s32, start_instance_location: u32 = 0) { ID3D12GraphicsCommandList_DrawIndexedInstanced(cmdlist, index_count_per_instance, instance_count, start_index_location, base_vertex_location, start_instance_location); }
 
-d3d12_cmd_list_close :: inline (using _cmdlist: *D3D12CommandList, infoqueue: *ID3D12InfoQueue = null) -> bool { return HR(ID3D12GraphicsCommandList_Close(cmdlist), infoqueue); }
+d3d12_cmd_list_close :: inline (using _cmdlist: *D3D12CommandList) -> bool { return HR(ID3D12GraphicsCommandList_Close(cmdlist)); }
 
-d3d12_cmd_list_update_buffer_data :: (using _cmdlist: *D3D12CommandList, buffer: *Buffer, data: *void, size: s64) -> bool {
+d3d12_cmd_list_update_buffer_data :: (using _cmdlist: *D3D12CommandList, buffer: *D3D12Buffer, data: *void, size: s64) -> bool {
 
     if !buffer.resource || !buffer.upload_buffer {
         log_error("Before able to update buffer data, buffer need to be create!");
@@ -127,7 +124,7 @@ d3d12_cmd_list_resource_transition :: (using _cmdlist: *D3D12CommandList, res: *
 
 d3d12_cmd_list_swapchain_buffer_transition :: (using _cmdlist: *D3D12CommandList, res: *Swapchain_Buffer, stataf: D3D12_RESOURCE_STATES, barrier := false, subresource := D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, flags: D3D12_RESOURCE_BARRIER_FLAGS = .NONE) {
 
-    if res.state[0] != stataf {
+    if res.states[0] != stataf {
         transition: D3D12_RESOURCE_BARRIER;
         transition.Type    = .TRANSITION;
         transition.Flags   = flags;
@@ -135,9 +132,9 @@ d3d12_cmd_list_swapchain_buffer_transition :: (using _cmdlist: *D3D12CommandList
         transition.Transition.pResource    = res.resource;
         transition.Transition.Subresource  = xx subresource;
         transition.Transition.StateAfter   = stataf;
-        transition.Transition.StateBefore  = res.state[0];
+        transition.Transition.StateBefore  = res.states[0];
 
-        res.state[0] = stataf;
+        res.states[0] = stataf;
         array_add(*accumulate_barriers, transition);
     }
 

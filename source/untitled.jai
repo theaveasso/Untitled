@@ -11,7 +11,6 @@ main :: () {
         log_error("engine init failed!");
         exit(3);
     }
-
     defer engine_fini(*engine);
 
     while !engine.should_quit {
@@ -24,10 +23,6 @@ main :: () {
                     case .ESCAPE; if it.key_pressed engine.should_quit = true;
                 }
             }
-        }
-
-        for Input.get_window_resizes() {
-            gfx_update_window(*engine);
         }
 
         engine_update(*engine);

@@ -1,21 +1,4 @@
-GPU_Resource :: struct {
-    resource_type: Resource_Type;
-    state: [..]D3D12_RESOURCE_STATES;
-
-    resource:       *ID3D12Resource;
-    upload_buffer:  *ID3D12Resource;
-
-    srv: Handles;
-    cbv: Handles;
-    uavs: [..]Handles;
-    rtvs: [..]Handles;
-    dsvs: [..]Handles;
-
-    gpu_addr:       D3D12_GPU_VIRTUAL_ADDRESS;
-    cpu_map_addr:   *void;
-}
-
-Buffer :: struct {
+D3D12Buffer :: struct {
     using #as base: GPU_Resource;
 
     type: Buffer_Type;
@@ -30,15 +13,16 @@ Buffer :: struct {
     }
 }
 
-buffer_fini :: (using buffer: *Buffer) {
+d3d12_buffer_release :: (using buffer: *D3D12Buffer) {
+
     safe_release_and_reset(*resource);
     safe_release_and_reset(*upload_buffer);
 }
 
-buffer_create_vertex_buffer :: (using gfx: *Graphics_Device, using buffer: *Buffer, _size: u32, stride: u32, _heap_type: D3D12_HEAP_TYPE = .DEFAULT) -> bool {
+make_d3d12_vertex_buffer :: (using _device: *D3D12Device, using buffer: *D3D12Buffer, _size: u32, stride: u32, _heap_type: D3D12_HEAP_TYPE = .DEFAULT) -> bool {
 
     if resource {
-        log_error("Buffer created, Are you sure?");
+        log_error("D3D12Buffer created, Are you sure?");
         return false;
     }
     counter = false;
@@ -63,7 +47,7 @@ buffer_create_vertex_buffer :: (using gfx: *Graphics_Device, using buffer: *Buff
     resource_desc.Layout            = .ROW_MAJOR;
     resource_desc.Flags             = .NONE;
 
-    ok := HR(ID3D12Device_CreateCommittedResource(d3ddevice, *heap_properties, .NONE, *resource_desc, .COMMON, null, *uid(ID3D12Resource_UUID), xx *resource), d3dinfo_queue);
+    ok := HR(ID3D12Device_CreateCommittedResource(device, *heap_properties, .NONE, *resource_desc, .COMMON, null, *uid(ID3D12Resource_UUID), xx *resource), info_queue);
     if !ok return false;
 
     vbv.BufferLocation  = ID3D12Resource_GetGPUVirtualAddress(resource);
@@ -79,17 +63,17 @@ buffer_create_vertex_buffer :: (using gfx: *Graphics_Device, using buffer: *Buff
     if heap_type == .DEFAULT {
         heap_properties.Type = .UPLOAD;
 
-        ok = HR(ID3D12Device_CreateCommittedResource(d3ddevice, *heap_properties, .NONE, *resource_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *upload_buffer));
+        ok = HR(ID3D12Device_CreateCommittedResource(device, *heap_properties, .NONE, *resource_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *upload_buffer));
         if !ok return false;
     }
 
     return true;
 }
 
-buffer_create_index_buffer :: (using gfx: *Graphics_Device, using buffer: *Buffer, _size: u32, format: DXGI_FORMAT = .R32_UINT, _heap_type: D3D12_HEAP_TYPE = .DEFAULT) -> bool {
+make_d3d12_index_buffer :: (using _device: *D3D12Device, using buffer: *D3D12Buffer, _size: u32, format: DXGI_FORMAT = .R32_UINT, _heap_type: D3D12_HEAP_TYPE = .DEFAULT) -> bool {
 
     if resource {
-        log_error("Buffer created, Are you sure?");
+        log_error("D3D12Buffer created, Are you sure?");
         return false;
     };
     counter = false;
@@ -114,7 +98,7 @@ buffer_create_index_buffer :: (using gfx: *Graphics_Device, using buffer: *Buffe
     resource_desc.Layout            = .ROW_MAJOR;
     resource_desc.Flags             = .NONE;
 
-    ok := HR(ID3D12Device_CreateCommittedResource(d3ddevice, *heap_properties, .NONE, *resource_desc, .COMMON, null, *uid(ID3D12Resource_UUID), xx *resource));
+    ok := HR(ID3D12Device_CreateCommittedResource(device, *heap_properties, .NONE, *resource_desc, .COMMON, null, *uid(ID3D12Resource_UUID), xx *resource));
     if !ok return false;
 
     ibv.BufferLocation  = ID3D12Resource_GetGPUVirtualAddress(resource);
@@ -130,17 +114,17 @@ buffer_create_index_buffer :: (using gfx: *Graphics_Device, using buffer: *Buffe
     if heap_type == .DEFAULT {
         heap_properties.Type = .UPLOAD;
 
-        ok = HR(ID3D12Device_CreateCommittedResource(d3ddevice, *heap_properties, .NONE, *resource_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *upload_buffer));
+        ok = HR(ID3D12Device_CreateCommittedResource(device, *heap_properties, .NONE, *resource_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *upload_buffer));
         if !ok return false;
     }
 
     return true;
 }
 
-buffer_create_constant_buffer :: (using gfx: *Graphics_Device, using buffer: *Buffer, heap: *D3D12Descriptor_Heap, _size: u32) -> bool {
+make_d3d12_constant_buffer :: (using _device: *D3D12Device, using buffer: *D3D12Buffer, heap: *D3D12Descriptor_Heap, _size: u32) -> bool {
 
     if resource {
-        log_error("Buffer created, Are you sure?");
+        log_error("D3D12Buffer created, Are you sure?");
         return false;
     }
 
@@ -164,7 +148,7 @@ buffer_create_constant_buffer :: (using gfx: *Graphics_Device, using buffer: *Bu
     resource_desc.Layout            = .ROW_MAJOR;
     resource_desc.Flags             = .NONE;
 
-    ok := HR(ID3D12Device_CreateCommittedResource(d3ddevice, *heap_properties, .NONE, *resource_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *resource), d3dinfo_queue);
+    ok := HR(ID3D12Device_CreateCommittedResource(device, *heap_properties, .NONE, *resource_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *resource), info_queue);
     if !ok return false;
 
     type = .CONSTANT;
@@ -175,13 +159,13 @@ buffer_create_constant_buffer :: (using gfx: *Graphics_Device, using buffer: *Bu
     cbv_desc: D3D12_CONSTANT_BUFFER_VIEW_DESC;
     cbv_desc.BufferLocation = ID3D12Resource_GetGPUVirtualAddress(resource);
     cbv_desc.SizeInBytes    = xx calc_constant_buffer_byte_size(_size);
-    cbv = d3d12_descriptor_heap_resource_add(d3ddevice, heap, .CBV, resource, xx *cbv_desc);
+    cbv = d3d12_descriptor_heap_resource_add(_device, heap, .CBV, resource, xx *cbv_desc);
     size = xx calc_constant_buffer_byte_size(_size);
 
     return true;
 }
 
-buffer_map_to_cpu :: (using buffer: *Buffer) {
+buffer_map_to_cpu :: (using buffer: *D3D12Buffer) {
 
     if heap_type == .UPLOAD {
         log("Only resource in Upload Heap can map too CPU");
@@ -191,14 +175,14 @@ buffer_map_to_cpu :: (using buffer: *Buffer) {
     ID3D12Resource_Map(resource, 0, *read_range, *cpu_map_addr);
 }
 
-buffer_unmap_to_cpu :: (using buffer: *Buffer) {
+buffer_unmap_to_cpu :: (using buffer: *D3D12Buffer) {
 
     read_range: D3D12_RANGE = .{0, 0};
     ID3D12Resource_Unmap(resource, 0, *read_range);
 }
 
-buffer_update_buffer_from_cpu :: (using buffer: *Buffer, data: *void, _size: s64) {
+buffer_update_buffer_from_cpu :: (using buffer: *D3D12Buffer, data: *void, _size: s64) {
     
     if cpu_map_addr memcpy(cpu_map_addr, data, _size);
-    else log("Buffer is not mappting to CPU, need to map first");
+    else log("D3D12Buffer is not mappting to CPU, need to map first");
 }

@@ -12,7 +12,7 @@ D3D12Fence :: struct {
     event: HANDLE;
 }
 
-d3d12_fence_init :: (device: *ID3D12Device, using _fence: *D3D12Fence, _flags: D3D12_FENCE_FLAGS = .NONE) -> bool {
+d3d12_fence_init :: (using _device: *D3D12Device, using _fence: *D3D12Fence, _flags: D3D12_FENCE_FLAGS = .NONE) -> bool {
 
     ok: bool;
     ok = HR(ID3D12Device_CreateFence(device, 0, flags, *uid(ID3D12Fence_UUID), xx *fence));

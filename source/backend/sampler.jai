@@ -5,8 +5,5 @@ D3D12Sampler :: struct {
 
 make_d3d12_sampler :: (_device: *D3D12Device, using _sampler: *D3D12Sampler, heap: *D3D12Descriptor_Heap) {
 
-    sampler = d3d12_descriptor_heap_sampler_add(_device.d3ddevice, heap, *desc);
-    #if DEBUG {
-        print_debug_msgs(_device.d3dinfo_queue);
-    }
+    sampler = d3d12_descriptor_heap_sampler_add(_device, heap, *desc);
 }

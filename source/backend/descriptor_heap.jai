@@ -24,21 +24,19 @@ D3D12Descriptor_Heap :: struct {
     }
 }
 
-d3d12_descriptor_heap_init :: (d3ddevice: *ID3D12Device, using _heap: *D3D12Descriptor_Heap, type: D3D12_DESCRIPTOR_HEAP_TYPE = .CBV_SRV_UAV) -> success: bool {
+d3d12_descriptor_heap_init :: (using _device: *D3D12Device, using _heap: *D3D12Descriptor_Heap, type: D3D12_DESCRIPTOR_HEAP_TYPE = .CBV_SRV_UAV) -> success: bool {
 
     desc.Type = type;
     desc.NumDescriptors  = HeapSizes[type];
     desc.Flags           = .SHADER_VISIBLE;
     if type == .RTV || type == .DSV desc.Flags = .NONE;
 
-    success := HR(ID3D12Device_CreateDescriptorHeap(d3ddevice, *desc, *uid(ID3D12DescriptorHeap_UUID), xx *heap));
-    if !success {
-        return false;
-    }
+    ok := HR(ID3D12Device_CreateDescriptorHeap(device, *desc, *uid(ID3D12DescriptorHeap_UUID), xx *heap));
+    if !ok return false;
 
     cpu_end_index  = 0;
     cpu_end_handle = ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(heap);
-    size           = ID3D12Device_GetDescriptorHandleIncrementSize(d3ddevice, desc.Type);
+    size           = ID3D12Device_GetDescriptorHandleIncrementSize(device, desc.Type);
 
     if type == .CBV_SRV_UAV {
         cbv_srv_uav_end_handle.cbv_end_handle = cpu_end_handle;
@@ -54,15 +52,15 @@ d3d12_descriptor_heap_init :: (d3ddevice: *ID3D12Device, using _heap: *D3D12Desc
         cbv_srv_uav_end_index.uav_end_index = HeapOffset[Heap_View_Type.UAV];
     }
 
-    return true;
+    return ok;
 }
 
-d3d12_descriptor_heap_fini :: (using _heap: *D3D12Descriptor_Heap) {
+d3d12_descriptor_heap_release :: (using _heap: *D3D12Descriptor_Heap) {
 
     safe_release_and_reset(*heap);
 }
 
-d3d12_descriptor_heap_resource_add :: (device: *ID3D12Device, using _heap: *D3D12Descriptor_Heap, type: Heap_View_Type, resource: *ID3D12Resource, resource_desc: *void, count_resource: *ID3D12Resource = null) -> Handles {
+d3d12_descriptor_heap_resource_add :: (using _device: *D3D12Device, using _heap: *D3D12Descriptor_Heap, type: Heap_View_Type, resource: *ID3D12Resource, resource_desc: *void, count_resource: *ID3D12Resource = null) -> Handles {
 
     handle: Handles;
 
@@ -85,7 +83,7 @@ d3d12_descriptor_heap_resource_add :: (device: *ID3D12Device, using _heap: *D3D1
     return handle;
 }
 
-d3d12_descriptor_heap_sampler_add  :: (device: *ID3D12Device, using _heap: *D3D12Descriptor_Heap, sampler_desc: *D3D12_SAMPLER_DESC) -> Handles {
+d3d12_descriptor_heap_sampler_add  :: (using _device: *D3D12Device, using _heap: *D3D12Descriptor_Heap, sampler_desc: *D3D12_SAMPLER_DESC) -> Handles {
 
     #if DEBUG {
         if desc.Type != .SAMPLER log("Sampler can only register in SAMPLER Heap!");

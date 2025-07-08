@@ -62,7 +62,7 @@ D3D12Pipeline :: struct {
     root_signature: D3D12Root_Signature;
 }
 
-d3d12_root_signature_init :: (device: *ID3D12Device, using _root_signature: *D3D12Root_Signature, infoqueue: *ID3D12InfoQueue = null) -> bool {
+d3d12_root_signature_init :: (using _device: *D3D12Device, using _root_signature: *D3D12Root_Signature) -> bool {
 
     feature_data: D3D12_FEATURE_DATA_ROOT_SIGNATURE;
     feature_data.HighestVersion = ._1_1;
@@ -117,15 +117,14 @@ d3d12_root_signature_release :: (using _root_signature: *D3D12Root_Signature) {
 
 }
 
-make_d3d12_graphics_pipeline :: (device: *ID3D12Device, using _pipeline: *D3D12Pipeline, 
-                                 raster: *D3D12Rasterizer_State,
-                                 blender: *D3D12Blend_State,
+make_d3d12_graphics_pipeline :: (using _device: *D3D12Device, using _pipeline: *D3D12Pipeline, 
+                                 rasterizer_state: *D3D12Rasterizer_State,
+                                 blend_state: *D3D12Blend_State,
                                  format: *D3D12Render_Taget_Format, 
-                                 depthstencil: *D3D12Depth_Stencil_State,
+                                 depthstencil_state: *D3D12Depth_Stencil_State,
                                  shader_set: *Shader_Set, 
                                  inputlayout: Vertex_Input_Layout_Type,
-                                 topology: D3D12_PRIMITIVE_TOPOLOGY_TYPE = .TRIANGLE,
-                                 infoqueue: *ID3D12InfoQueue = null) -> bool {
+                                 topology: D3D12_PRIMITIVE_TOPOLOGY_TYPE = .TRIANGLE) -> bool {
 
     type = .GRAPHICS;
 
@@ -146,8 +145,8 @@ make_d3d12_graphics_pipeline :: (device: *ID3D12Device, using _pipeline: *D3D12P
     }
 
     pso_desc.pRootSignature  = root_signature.root_signature;
-    pso_desc.RasterizerState = raster.state;
-    pso_desc.BlendState      = blender.state;
+    pso_desc.RasterizerState = rasterizer_state.state;
+    pso_desc.BlendState      = blend_state.state;
     pso_desc.PrimitiveTopologyType = topology;
     pso_desc.NumRenderTargets = format.num_of_rts;
     
@@ -155,7 +154,7 @@ make_d3d12_graphics_pipeline :: (device: *ID3D12Device, using _pipeline: *D3D12P
         pso_desc.RTVFormats[i] = format.rt_formats[i];
     }
 
-    pso_desc.DepthStencilState = depthstencil.state;
+    pso_desc.DepthStencilState = depthstencil_state.state;
     pso_desc.DSVFormat = format.ds_format;
 
     if pso_desc.DSVFormat == .R32_TYPELESS pso_desc.DSVFormat = .D32_FLOAT;
@@ -164,11 +163,11 @@ make_d3d12_graphics_pipeline :: (device: *ID3D12Device, using _pipeline: *D3D12P
     pso_desc.SampleDesc.Count = 1;
     pso_desc.SampleMask       = INFINITE;
 
-    return HR(ID3D12Device_CreateGraphicsPipelineState(device, *pso_desc, *uid(ID3D12PipelineState_UUID), xx *pipeline), infoqueue);
+    return HR(ID3D12Device_CreateGraphicsPipelineState(device, *pso_desc, *uid(ID3D12PipelineState_UUID), xx *pipeline));
 
 }
 
-make_d3d12_compute_pipeline  :: (device: *ID3D12Device) -> bool {
+make_d3d12_compute_pipeline  :: (using _device: *D3D12Device) -> bool {
 
     return true;
 }
@@ -176,4 +175,5 @@ make_d3d12_compute_pipeline  :: (device: *ID3D12Device) -> bool {
 d3d12_pipeline_release :: (using _pipeline: *D3D12Pipeline) {
 
     safe_release_and_reset(*pipeline);
+    safe_release_and_reset(*root_signature.root_signature);
 }
