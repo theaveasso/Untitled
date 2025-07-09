@@ -78,6 +78,13 @@ d3d12_root_signature_init :: (using _device: *D3D12Device, using _root_signature
     for parameters {
         if it.type == .UNDEFINED return false;
         if it.type == {
+            case .CBV;
+                if !it.is_table && it.res_counts != 1 {
+                    ranges[it_index] = D3D12_DESCRIPTOR_RANGE1_INIT(.CBV, it.res_counts, it.bind_slot, it.shader_space, xx it.range_flags);
+                    dx12_param       = D3D12_ROOT_PARAMETER1_INIT_TABLE(1, *ranges[it_index], it.visibility); 
+                } else {
+                    dx12_param       = D3D12_ROOT_PARAMETER1_INIT_CBV(it.bind_slot, it.shader_space, xx it.desc_flags, it.visibility); 
+                }
             case .SRV;
                 if it.is_table {
                     ranges[it_index] = D3D12_DESCRIPTOR_RANGE1_INIT(.SRV, parameters[it_index].res_counts, parameters[it_index].bind_slot, parameters[it_index].shader_space, xx parameters[it_index].range_flags);

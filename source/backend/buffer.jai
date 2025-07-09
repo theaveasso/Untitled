@@ -101,23 +101,23 @@ make_d3d12_constant_buffer :: (using _device: *D3D12Device, using buffer: *D3D12
     return true;
 }
 
-buffer_map_to_cpu :: (using buffer: *D3D12Buffer) {
+d3d12_buffer_map_to_cpu :: (using buffer: *D3D12Buffer) {
 
-    if heap_type == .UPLOAD {
-        log("Only resource in Upload Heap can map too CPU");
+    if heap_type != .UPLOAD {
+        log("Only resource in Upload Heap can map to CPU");
     }
 
     read_range: D3D12_RANGE = .{0, 0};
     ID3D12Resource_Map(resource, 0, *read_range, *cpu_map_addr);
 }
 
-buffer_unmap_to_cpu :: (using buffer: *D3D12Buffer) {
+d3d12_buffer_unmap_to_cpu :: (using buffer: *D3D12Buffer) {
 
     read_range: D3D12_RANGE = .{0, 0};
     ID3D12Resource_Unmap(resource, 0, *read_range);
 }
 
-buffer_update_buffer_from_cpu :: (using buffer: *D3D12Buffer, data: *void, _size: s64) {
+d3d12_buffer_update_buffer_from_cpu :: (using buffer: *D3D12Buffer, data: *void, _size: s64) {
     
     if cpu_map_addr memcpy(cpu_map_addr, data, _size);
     else log("D3D12Buffer is not mappting to CPU, need to map first");

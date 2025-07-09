@@ -119,6 +119,15 @@ UTD3D12_BUFFER_RESOURCE_DESC :: inline (size: u32) -> D3D12_RESOURCE_DESC {
     return desc;
 }
 
+UTD3D12_ROOT_CONSTANTS_INIT :: inline (shader_register: u32, register_space: u32, num_32_bit_values: u32) -> D3D12_ROOT_CONSTANTS {
+
+    root_constant: D3D12_ROOT_CONSTANTS;
+    root_constant.ShaderRegister = shader_register;
+    root_constant.RegisterSpace  = register_space;
+    root_constant.Num32BitValues = num_32_bit_values;
+    return root_constant;
+}
+
 D3D12_DESCRIPTOR_RANGE1_INIT :: inline (type: D3D12_DESCRIPTOR_RANGE_TYPE, counts: u32, base_shader_register: u32, register_space: u32 = 0, offset_in_descriptors_from_table_start := D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND) -> D3D12_DESCRIPTOR_RANGE1 {
 
     desc: D3D12_DESCRIPTOR_RANGE1;
@@ -146,6 +155,15 @@ D3D12_ROOT_PARAMETER1_INIT_TABLE :: inline (num_descriptor_range: u32, range: *D
     desc.DescriptorTable.NumDescriptorRanges   = num_descriptor_range;
     desc.DescriptorTable.pDescriptorRanges     = range;
     desc.ShaderVisibility                      = visibility;
+    return desc;
+}
+
+D3D12_ROOT_PARAMETER1_INIT_CBV :: inline (shader_register: u32, register_space: u32 = 0, descriptor_flags: D3D12_ROOT_DESCRIPTOR_FLAGS, visibility: D3D12_SHADER_VISIBILITY = .ALL) -> D3D12_ROOT_PARAMETER1 {
+
+    desc: D3D12_ROOT_PARAMETER1;
+    desc.ParameterType     = .CBV;
+    desc.Descriptor        = D3D12_ROOT_DESCRIPTOR1_INIT(shader_register, register_space, descriptor_flags);
+    desc.ShaderVisibility  = visibility;
     return desc;
 }
 

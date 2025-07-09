@@ -79,10 +79,10 @@ engine_init :: (using engine: *Engine) -> bool {
 
 effect_init   :: (using engine: *Engine) -> bool {
 
-    array_resize(*pipeline.root_signature.parameters, 2);
+    array_resize(*pipeline.root_signature.parameters, 3);
 
     pipeline.root_signature.parameters[0].type       = .SRV;
-    pipeline.root_signature.parameters[0].bind_slot  = 0;
+    pipeline.root_signature.parameters[0].bind_slot  = 1;
     pipeline.root_signature.parameters[0].res_counts = 1;
     pipeline.root_signature.parameters[0].resource   = *texture;
     pipeline.root_signature.parameters[0].is_table   = true;
@@ -93,6 +93,12 @@ effect_init   :: (using engine: *Engine) -> bool {
     pipeline.root_signature.parameters[1].res_counts = 1;
     pipeline.root_signature.parameters[1].sampler    = *sampler;
     pipeline.root_signature.parameters[1].visibility = .PIXEL;
+
+    pipeline.root_signature.parameters[2].type       = .CBV;
+    pipeline.root_signature.parameters[2].bind_slot  = 0;
+    pipeline.root_signature.parameters[2].res_counts = 1;
+    pipeline.root_signature.parameters[2].resource   = *constant_buffer;
+    pipeline.root_signature.parameters[2].visibility = .ALL;
 
     d3d12_root_signature_init(*renderer._device, *pipeline.root_signature);
 
@@ -164,6 +170,8 @@ engine_resource_init :: (using engine: *Engine) -> bool {
     ];
     indices_triangle : []u32 = .[0, 1, 2, 0, 2, 3];
 
+    d3d12_buffer_map_to_cpu(*constant_buffer);
+
     d3d12_cmd_list_resource_transition(*cmdlist, *vertex_buffer, .COPY_DEST);
     d3d12_cmd_list_resource_transition(*cmdlist, *texture,       .COPY_DEST);
     d3d12_cmd_list_resource_transition(*cmdlist, *index_buffer,  .COPY_DEST, true);
@@ -207,6 +215,8 @@ engine_fini :: (using engine: *Engine) {
     d3d12_renderer_release(*renderer);
 }
 
+offset : float;
+
 engine_update :: (using engine: *Engine) {
 
     using renderer;
@@ -216,6 +226,11 @@ engine_update :: (using engine: *Engine) {
     dhs: [2]*ID3D12DescriptorHeap;
     dhs[0] = renderer.heap_cbv_srv_uav.heap;
     dhs[1] = renderer.heap_sampler.heap;
+
+    offset += 0.001;
+    if offset >= 1.5 offset = -1.5;
+    d3d12_buffer_update_buffer_from_cpu(*constant_buffer, *offset, size_of(float));
+
     d3d12_cmd_list_bind_heap(*cmdlist, dhs.data, xx dhs.count);
     d3d12_cmd_list_bind_graphics_root_signature(*cmdlist, *pipeline.root_signature);
 
