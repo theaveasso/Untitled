@@ -76,7 +76,6 @@ d3d12_root_signature_init :: (using _device: *D3D12Device, using _root_signature
 
     array_resize(*ranges, parameters.count);
     for parameters {
-
         if it.type == .UNDEFINED return false;
         if it.type == {
             case .SRV;
@@ -84,7 +83,7 @@ d3d12_root_signature_init :: (using _device: *D3D12Device, using _root_signature
                     ranges[it_index] = D3D12_DESCRIPTOR_RANGE1_INIT(.SRV, parameters[it_index].res_counts, parameters[it_index].bind_slot, parameters[it_index].shader_space, xx parameters[it_index].range_flags);
                     dx12_param       = D3D12_ROOT_PARAMETER1_INIT_TABLE(1, *ranges[it_index], parameters[it_index].visibility); 
                 } else {
-                    dx12_param       = D3D12_ROOT_PARAMETER1_INIT_UAV(parameters[it_index].bind_slot, parameters[it_index].shader_space, xx parameters[it_index].desc_flags, parameters[it_index].visibility);
+                    dx12_param       = D3D12_ROOT_PARAMETER1_INIT_SRV(parameters[it_index].bind_slot, parameters[it_index].shader_space, xx parameters[it_index].desc_flags, parameters[it_index].visibility);
                 }
             case .SAMPLER;
                 ranges[it_index] = D3D12_DESCRIPTOR_RANGE1_INIT(.SAMPLER, parameters[it_index].res_counts, parameters[it_index].bind_slot, parameters[it_index].shader_space, xx parameters[it_index].range_flags);

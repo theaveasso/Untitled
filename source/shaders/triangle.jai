@@ -11,9 +11,6 @@ struct PSInput
     float2 texcoord : TEXCOORD;
 };
 
-// Texture2D       g_texture: register(t0);
-// SamplerState    g_sampler: register(s0);
-
 PSInput VSMain(VSInput vin)
 {
     PSInput result;
@@ -23,11 +20,13 @@ PSInput VSMain(VSInput vin)
     return result;
 }
 
+Texture2D       g_texture: register(t0);
+SamplerState    g_sampler: register(s0);
+
 float4 PSMain(PSInput input) : SV_TARGET
 {
-    // float4 col = g_texture.Sample(g_sampler, input.texcoord);
-    // if (col.a == 0) discard;
-    return float4(1.0f, 1.0f, 1.0f, 1.0f);
+    float4 color = g_texture.Sample(g_sampler, input.texcoord);
+    return color;
 }
 
 HLSL

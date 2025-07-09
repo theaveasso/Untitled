@@ -24,7 +24,8 @@ D3D12Renderer :: struct {
     // Descriptor Heap
     heap_rtv:       D3D12Descriptor_Heap;
     heap_dsv:       D3D12Descriptor_Heap;
-    heaps   :       [D3D12_DESCRIPTOR_HEAP_TYPE.NUM_TYPES] D3D12Descriptor_Heap;
+    heap_cbv_srv_uav: D3D12Descriptor_Heap;
+    heap_sampler:   D3D12Descriptor_Heap;
 
     #if DEBUG {
         debug_layer: *ID3D12Debug1;
@@ -131,11 +132,9 @@ d3d12_renderer_init :: (using renderer: *D3D12Renderer, hwnd: HWND) -> bool {
 
     ok = d3d12_descriptor_heap_init(*_device, *heap_rtv, .RTV);
     ok = d3d12_descriptor_heap_init(*_device, *heap_dsv, .DSV);
+    ok = d3d12_descriptor_heap_init(*_device, *heap_sampler, .SAMPLER);
+    ok = d3d12_descriptor_heap_init(*_device, *heap_cbv_srv_uav, .CBV_SRV_UAV);
     if !ok return false;
-
-    for i : 0..D3D12_DESCRIPTOR_HEAP_TYPE.NUM_TYPES - 1 {
-        d3d12_descriptor_heap_init(*_device, *heaps[i], cast(D3D12_DESCRIPTOR_HEAP_TYPE) i);
-    }
 
     return ok;
 }
@@ -147,9 +146,9 @@ d3d12_renderer_release  :: (using renderer: *D3D12Renderer) {
 
     d3d12_descriptor_heap_release(*heap_rtv);
     d3d12_descriptor_heap_release(*heap_dsv);
-    for i : 0..D3D12_DESCRIPTOR_HEAP_TYPE.NUM_TYPES - 1 {
-        d3d12_descriptor_heap_release(*heaps[i]);
-    }
+    d3d12_descriptor_heap_release(*heap_sampler);
+    d3d12_descriptor_heap_release(*heap_cbv_srv_uav);
+
     safe_release_and_reset(*queues[cast(u8) cast(u8) Command_Type.GRAPHICS]);
     safe_release_and_reset(*queues[cast(u8) cast(u8) Command_Type.COMPUTE]);
     safe_release_and_reset(*queues[cast(u8) cast(u8) Command_Type.COPY]);

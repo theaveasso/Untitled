@@ -59,6 +59,8 @@ Buffer_Type :: enum u8 {
     STRUCTURED_COUNTER;
 }
 
+SIZE_MAX :: 0x4_0000;
+
 HeapSizes  : [D3D12_DESCRIPTOR_HEAP_TYPE.NUM_TYPES]u32    : .[3000, 10, 10, 10]; 
 HeapOffset : [#run enum_highest_value(Heap_View_Type)+1]u32 : .[0, 1000, 2000, 0, 0]; 
 

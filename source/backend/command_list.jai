@@ -76,7 +76,7 @@ d3d12_cmd_list_draw_index_instanced :: inline (using _cmdlist: *D3D12CommandList
 
 d3d12_cmd_list_close :: inline (using _cmdlist: *D3D12CommandList) -> bool { return HR(ID3D12GraphicsCommandList_Close(cmdlist)); }
 
-d3d12_cmd_list_update_buffer_data :: (using _cmdlist: *D3D12CommandList, buffer: *D3D12Buffer, data: *void, size: s64) -> bool {
+d3d12_cmd_list_update_buffer_data :: inline (using _cmdlist: *D3D12CommandList, buffer: *D3D12Buffer, data: *void, size: s64) -> bool {
 
     if !buffer.resource || !buffer.upload_buffer {
         log_error("Before able to update buffer data, buffer need to be create!");
@@ -93,12 +93,49 @@ d3d12_cmd_list_update_buffer_data :: (using _cmdlist: *D3D12CommandList, buffer:
     return true;
 }
 
-d3d12_cmd_list_resource_transition :: (using _cmdlist: *D3D12CommandList, res: *GPU_Resource, stataf: D3D12_RESOURCE_STATES, barrier: bool = false, subresource:= D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, flags: D3D12_RESOURCE_BARRIER_FLAGS = .NONE) {
+d3d12_cmd_list_update_texture_data :: inline (using _cmdlist: *D3D12CommandList, using _texture: *D3D12Texture, data: *void, start_level: s32 = 0, level_num: s32 = 1, start_slice: s32 = 0, slice_num: s32 = 1) -> bool {
+
+    if !resource || !upload_buffer {
+        log_error("Before able to update buffer data, texture need to be create!");
+        return false;
+    }
+
+    levels := min((desc.MipLevels - start_level), level_num);
+    slices := min((desc.DepthOrArraySize - start_slice), slice_num);
+
+    Data: [] D3D12_SUBRESOURCE_DATA; 
+    Data = NewArray(levels, D3D12_SUBRESOURCE_DATA);
+    
+    cpu_offset: s64 = 0;
+    gpu_offset: s64 = 0;
+
+    _slices := start_slice + slices;
+    _levels := start_level + levels;
+    for i: start_slice.._slices - 1 {
+        start_sub := i * desc.MipLevels + start_level;
+        gpu_offset = xx layouts[start_sub].Offset;
+        for j: start_level.._levels - 1 {
+            subnum := i * desc.MipLevels + j;
+            cpumiplevel := j - start_level;
+            Data[cpumiplevel].pData = data + cpu_offset;
+            Data[cpumiplevel].RowPitch = layouts[subnum].Footprint.Width * bytesize;
+            Data[cpumiplevel].SlicePitch = layouts[subnum].Footprint.Height * Data[cpumiplevel].RowPitch;
+            cpu_offset += Data[cpumiplevel].SlicePitch;
+        }
+        update_subresource(cmdlist, resource, upload_buffer, gpu_offset, xx start_sub, xx levels, Data.data);
+
+        array_free(Data);
+    }
+
+    return true;
+}
+
+d3d12_cmd_list_resource_transition :: inline (using _cmdlist: *D3D12CommandList, res: *GPU_Resource, stataf: D3D12_RESOURCE_STATES, barrier: bool = false, subresource:= D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, flags: D3D12_RESOURCE_BARRIER_FLAGS = .NONE) {
 
     if subresource == D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES {
-        if res.state[0] == stataf return;
+        if res.states[0] == stataf return;
     } else {
-        if res.state[subresource] == stataf return;
+        if res.states[subresource] == stataf return;
     }
 
     transition: D3D12_RESOURCE_BARRIER;
@@ -109,13 +146,13 @@ d3d12_cmd_list_resource_transition :: (using _cmdlist: *D3D12CommandList, res: *
     transition.Transition.Subresource  = xx subresource;
     transition.Transition.StateAfter   = stataf;
     if subresource == D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES {
-        transition.Transition.StateBefore  = res.state[0];
-        for *res.state {
+        transition.Transition.StateBefore  = res.states[0];
+        for *res.states {
             it.* = stataf;
         }
     } else {
-        transition.Transition.StateBefore  = res.state[subresource];
-        res.state[subresource] = stataf;
+        transition.Transition.StateBefore  = res.states[subresource];
+        res.states[subresource] = stataf;
     }
 
     array_add(*accumulate_barriers, transition);
@@ -167,7 +204,7 @@ d3d12_cmd_list_reset_w_allocator :: inline (using _cmdlist: *D3D12CommandList, p
 
 #scope_file
 
-set_barrier :: (using _cmdlist: *D3D12CommandList) {
+set_barrier :: inline (using _cmdlist: *D3D12CommandList) {
 
     if accumulate_barriers.count > 0 ID3D12GraphicsCommandList_ResourceBarrier(cmdlist, xx accumulate_barriers.count, accumulate_barriers.data);
     array_reset(*accumulate_barriers);

@@ -9,6 +9,7 @@
 #load "sampler.jai";
 #load "shader.jai";
 #load "swapchain_buffer.jai";
+#load "texture_format.jai";
 #load "texture.jai";
 
 #load "d3dx.jai";

@@ -54,23 +54,23 @@ engine_init :: (using engine: *Engine) -> bool {
         log_error("make_d3d12_index_buffer failed!");
         return false;
     }
-    if !make_d3d12_constant_buffer(*renderer._device, *constant_buffer, *renderer.heaps[xx D3D12_DESCRIPTOR_HEAP_TYPE.CBV_SRV_UAV], size_of(float)) {
+    if !make_d3d12_constant_buffer(*renderer._device, *constant_buffer, *renderer.heap_cbv_srv_uav, size_of(float)) {
         log_error("make_d3d12_constant_buffer failed!");
         return false;
     }
 
     sampler = D3D12_SAMPLER_INIT();
-    make_d3d12_sampler(*renderer._device, *sampler, *renderer.heaps[xx D3D12_DESCRIPTOR_HEAP_TYPE.SAMPLER]);
-
-    ok = effect_init(engine);
-    if !ok {
-        log_error("engine effect init failed!");
-        return false;
-    }
+    make_d3d12_sampler(*renderer._device, *sampler, *renderer.heap_sampler);
 
     ok = engine_resource_init(engine);
     if !ok {
         log_error("engine resource init failed!");
+        return false;
+    }
+
+    ok = effect_init(engine);
+    if !ok {
+        log_error("engine effect init failed!");
         return false;
     }
 
@@ -85,6 +85,7 @@ effect_init   :: (using engine: *Engine) -> bool {
     pipeline.root_signature.parameters[0].bind_slot  = 0;
     pipeline.root_signature.parameters[0].res_counts = 1;
     pipeline.root_signature.parameters[0].resource   = *texture;
+    pipeline.root_signature.parameters[0].is_table   = true;
     pipeline.root_signature.parameters[0].visibility = .PIXEL;
 
     pipeline.root_signature.parameters[1].type       = .SAMPLER;
@@ -121,32 +122,73 @@ engine_effect_fini :: (using engine: *Engine) {
 
 engine_resource_init :: (using engine: *Engine) -> bool {
 
+    start:= seconds_since_init();
+    if !make_d3d12_texture(*renderer, *texture, .R8G8B8A8_UNORM, 256, 256) {
+        log_error("make_d3d12_texture failed!");
+        return false;
+    }
+
+    row_pitch  := texture.desc.Width * 4;
+    cel_pitch  := row_pitch >> 3;
+    cel_height := texture.desc.Width >> 3;
+    texture_size := row_pitch * texture.desc.Height;
+
+    texture_data := NewArray(xx texture_size, u8);
+    index : u64 = 0;
+    while index < texture_size {
+        x := index % texture.desc.Width;
+        y := index / texture.desc.Width;
+        i := x / cel_pitch; 
+        j := y / cel_height;
+
+        if i % 2 == j % 2 {
+            texture_data[index]     = 0x00;
+            texture_data[index + 1] = 0x00;
+            texture_data[index + 2] = 0x00;
+            texture_data[index + 3] = 0xff;
+        } else {
+            texture_data[index]     = 0xff;
+            texture_data[index + 1] = 0xff;
+            texture_data[index + 2] = 0xff;
+            texture_data[index + 3] = 0xff;
+        }
+
+        index += 4;
+    }
+
     vertices_triangle : []float = .[
         -0.5,  0.5, 0.0, 0.0,
-         0.5,  0.5, 1.0, 1.0,
+         0.5,  0.5, 1.0, 0.0,
          0.5, -0.5, 1.0, 1.0,
         -0.5, -0.5, 0.0, 1.0,
     ];
     indices_triangle : []u32 = .[0, 1, 2, 0, 2, 3];
 
     d3d12_cmd_list_resource_transition(*cmdlist, *vertex_buffer, .COPY_DEST);
-    d3d12_cmd_list_resource_transition(*cmdlist, *index_buffer, .COPY_DEST, true);
+    d3d12_cmd_list_resource_transition(*cmdlist, *texture,       .COPY_DEST);
+    d3d12_cmd_list_resource_transition(*cmdlist, *index_buffer,  .COPY_DEST, true);
 
-    d3d12_cmd_list_update_buffer_data(*cmdlist, *vertex_buffer, vertices_triangle.data, xx (4 * 4 * size_of(float)));
-    d3d12_cmd_list_update_buffer_data(*cmdlist, *index_buffer, indices_triangle.data, xx (6 * size_of(u32)));
+    d3d12_cmd_list_update_buffer\_data(*cmdlist, *vertex_buffer, vertices_triangle.data, xx (4 * 4 * size_of(float)));
+    d3d12_cmd_list_update_texture_data(*cmdlist, *texture, texture_data.data);
+    d3d12_cmd_list_update_buffer\_data(*cmdlist, *index_buffer, indices_triangle.data, xx (6 * size_of(u32)));
 
     d3d12_cmd_list_resource_transition(*cmdlist, *vertex_buffer, .VERTEX_AND_CONSTANT_BUFFER);
-    d3d12_cmd_list_resource_transition(*cmdlist, *index_buffer, .INDEX_BUFFER, true);
+    d3d12_cmd_list_resource_transition(*cmdlist, *texture,       .PIXEL_SHADER_RESOURCE);
+    d3d12_cmd_list_resource_transition(*cmdlist, *index_buffer,  .INDEX_BUFFER, true);
 
     d3d12_cmd_list_close(*cmdlist);
     gfx_execute_commands(*renderer, *cmdlist);
     gfx_insert_signal_fence(*renderer, .GRAPHICS);
     gfx_wait_fence_increment(*renderer);
 
+    print("--- resource init took % \n", seconds_since_init() - start);
+
     return true;
 }
 
 engine_resource_fini :: (using engine: *Engine) {
+
+    d3d12_texture_release(*texture);
 
     d3d12_buffer_release(*vertex_buffer);
     d3d12_buffer_release(*index_buffer);
@@ -172,8 +214,8 @@ engine_update :: (using engine: *Engine) {
     d3d12_cmd_list_reset_w_allocator(*cmdlist, *pipeline);
 
     dhs: [2]*ID3D12DescriptorHeap;
-    dhs[0] = renderer.heaps[xx D3D12_DESCRIPTOR_HEAP_TYPE.CBV_SRV_UAV].heap;
-    dhs[1] = renderer.heaps[xx D3D12_DESCRIPTOR_HEAP_TYPE.SAMPLER].heap;
+    dhs[0] = renderer.heap_cbv_srv_uav.heap;
+    dhs[1] = renderer.heap_sampler.heap;
     d3d12_cmd_list_bind_heap(*cmdlist, dhs.data, xx dhs.count);
     d3d12_cmd_list_bind_graphics_root_signature(*cmdlist, *pipeline.root_signature);
 

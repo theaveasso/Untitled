@@ -99,6 +99,7 @@ compile_d3d_shader :: (using _shader: *D3D12Shader, source: string, entry_point:
         // Setting this flag improves the shader debugging experience, but still allows  
         // the shaders to be optimized and to run exactly the way they will run in  
         // the release configuration of this program. 
+    #if DEBUG {
         flags |= .DEBUG; 
         // Disable optimizations to further improve shader debugging 
         flags |= .SKIP_OPTIMIZATION; 

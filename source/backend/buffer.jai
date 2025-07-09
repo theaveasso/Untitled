@@ -27,27 +27,7 @@ make_d3d12_vertex_buffer :: (using _device: *D3D12Device, using buffer: *D3D12Bu
     }
     counter = false;
 
-    heap_properties: D3D12_HEAP_PROPERTIES;
-    heap_properties.Type                    = _heap_type;
-    heap_properties.CPUPageProperty         = .UNKNOWN;
-    heap_properties.MemoryPoolPreference    = .UNKNOWN;
-    heap_properties.CreationNodeMask        = 1;
-    heap_properties.VisibleNodeMask         = 1;
-
-    resource_desc: D3D12_RESOURCE_DESC;
-    resource_desc.Dimension         = .BUFFER;
-    resource_desc.Alignment         = 0;
-    resource_desc.Width             = xx _size;
-    resource_desc.Height            = 1;
-    resource_desc.DepthOrArraySize  = 1;
-    resource_desc.MipLevels         = 1;
-    resource_desc.Format            = .UNKNOWN;
-    resource_desc.SampleDesc.Count  = 1;
-    resource_desc.SampleDesc.Quality= 0;
-    resource_desc.Layout            = .ROW_MAJOR;
-    resource_desc.Flags             = .NONE;
-
-    ok := HR(ID3D12Device_CreateCommittedResource(device, *heap_properties, .NONE, *resource_desc, .COMMON, null, *uid(ID3D12Resource_UUID), xx *resource), info_queue);
+    ok := HR(ID3D12Device_CreateCommittedResource(device, *UTD3D12_HEAP_PROPERTIES(_heap_type), .NONE, *UTD3D12_BUFFER_RESOURCE_DESC(xx _size), .COMMON, null, *uid(ID3D12Resource_UUID), xx *resource), info_queue);
     if !ok return false;
 
     vbv.BufferLocation  = ID3D12Resource_GetGPUVirtualAddress(resource);
@@ -55,15 +35,13 @@ make_d3d12_vertex_buffer :: (using _device: *D3D12Device, using buffer: *D3D12Bu
     vbv.StrideInBytes   = stride;
 
     type = .VERTEX;
-    array_add(*state, .VERTEX_AND_CONSTANT_BUFFER);
+    array_add(*states, .VERTEX_AND_CONSTANT_BUFFER);
     heap_type = _heap_type;
     size = _size;
     gpu_addr = ID3D12Resource_GetGPUVirtualAddress(resource);
 
     if heap_type == .DEFAULT {
-        heap_properties.Type = .UPLOAD;
-
-        ok = HR(ID3D12Device_CreateCommittedResource(device, *heap_properties, .NONE, *resource_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *upload_buffer));
+        ok = HR(ID3D12Device_CreateCommittedResource(device, *UTD3D12_HEAP_PROPERTIES(.UPLOAD), .NONE, *UTD3D12_BUFFER_RESOURCE_DESC(xx _size), .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *upload_buffer));
         if !ok return false;
     }
 
@@ -78,27 +56,7 @@ make_d3d12_index_buffer :: (using _device: *D3D12Device, using buffer: *D3D12Buf
     };
     counter = false;
 
-    heap_properties: D3D12_HEAP_PROPERTIES;
-    heap_properties.Type                    = _heap_type;
-    heap_properties.CPUPageProperty         = .UNKNOWN;
-    heap_properties.MemoryPoolPreference    = .UNKNOWN;
-    heap_properties.CreationNodeMask        = 1;
-    heap_properties.VisibleNodeMask         = 1;
-
-    resource_desc: D3D12_RESOURCE_DESC;
-    resource_desc.Dimension         = .BUFFER;
-    resource_desc.Alignment         = 0;
-    resource_desc.Width             = _size;
-    resource_desc.Height            = 1;
-    resource_desc.DepthOrArraySize  = 1;
-    resource_desc.MipLevels         = 1;
-    resource_desc.Format            = .UNKNOWN;
-    resource_desc.SampleDesc.Count  = 1;
-    resource_desc.SampleDesc.Quality= 0;
-    resource_desc.Layout            = .ROW_MAJOR;
-    resource_desc.Flags             = .NONE;
-
-    ok := HR(ID3D12Device_CreateCommittedResource(device, *heap_properties, .NONE, *resource_desc, .COMMON, null, *uid(ID3D12Resource_UUID), xx *resource));
+    ok := HR(ID3D12Device_CreateCommittedResource(device, *UTD3D12_HEAP_PROPERTIES(_heap_type), .NONE, *UTD3D12_BUFFER_RESOURCE_DESC(xx _size), .COMMON, null, *uid(ID3D12Resource_UUID), xx *resource), info_queue);
     if !ok return false;
 
     ibv.BufferLocation  = ID3D12Resource_GetGPUVirtualAddress(resource);
@@ -106,15 +64,13 @@ make_d3d12_index_buffer :: (using _device: *D3D12Device, using buffer: *D3D12Buf
     ibv.Format          = .R32_UINT;
 
     type = .INDEX;
-    array_add(*state, .INDEX_BUFFER);
+    array_add(*states, .INDEX_BUFFER);
     heap_type = _heap_type;
     size = _size;
     gpu_addr = ID3D12Resource_GetGPUVirtualAddress(resource);
 
     if heap_type == .DEFAULT {
-        heap_properties.Type = .UPLOAD;
-
-        ok = HR(ID3D12Device_CreateCommittedResource(device, *heap_properties, .NONE, *resource_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *upload_buffer));
+        ok = HR(ID3D12Device_CreateCommittedResource(device, *UTD3D12_HEAP_PROPERTIES(.UPLOAD), .NONE, *UTD3D12_BUFFER_RESOURCE_DESC(xx _size), .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *upload_buffer));
         if !ok return false;
     }
 
@@ -128,31 +84,12 @@ make_d3d12_constant_buffer :: (using _device: *D3D12Device, using buffer: *D3D12
         return false;
     }
 
-    heap_properties: D3D12_HEAP_PROPERTIES;
-    heap_properties.Type                    = .UPLOAD;
-    heap_properties.CPUPageProperty         = .UNKNOWN;
-    heap_properties.MemoryPoolPreference    = .UNKNOWN;
-    heap_properties.CreationNodeMask        = 1;
-    heap_properties.VisibleNodeMask         = 1;
-
-    resource_desc: D3D12_RESOURCE_DESC;
-    resource_desc.Dimension         = .BUFFER;
-    resource_desc.Alignment         = 0;
-    resource_desc.Width             = xx calc_constant_buffer_byte_size(_size);
-    resource_desc.Height            = 1;
-    resource_desc.DepthOrArraySize  = 1;
-    resource_desc.MipLevels         = 1;
-    resource_desc.Format            = .UNKNOWN;
-    resource_desc.SampleDesc.Count  = 1;
-    resource_desc.SampleDesc.Quality= 0;
-    resource_desc.Layout            = .ROW_MAJOR;
-    resource_desc.Flags             = .NONE;
-
-    ok := HR(ID3D12Device_CreateCommittedResource(device, *heap_properties, .NONE, *resource_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *resource), info_queue);
+    size = xx calc_constant_buffer_byte_size(_size);
+    ok := HR(ID3D12Device_CreateCommittedResource(device, *UTD3D12_HEAP_PROPERTIES(.UPLOAD), .NONE, *UTD3D12_BUFFER_RESOURCE_DESC(xx size), .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *resource));
     if !ok return false;
 
     type = .CONSTANT;
-    array_add(*state, .GENERIC_READ);
+    array_add(*states, .GENERIC_READ);
     heap_type = .UPLOAD;
     gpu_addr = ID3D12Resource_GetGPUVirtualAddress(resource);
 
@@ -160,7 +97,6 @@ make_d3d12_constant_buffer :: (using _device: *D3D12Device, using buffer: *D3D12
     cbv_desc.BufferLocation = ID3D12Resource_GetGPUVirtualAddress(resource);
     cbv_desc.SizeInBytes    = xx calc_constant_buffer_byte_size(_size);
     cbv = d3d12_descriptor_heap_resource_add(_device, heap, .CBV, resource, xx *cbv_desc);
-    size = xx calc_constant_buffer_byte_size(_size);
 
     return true;
 }
