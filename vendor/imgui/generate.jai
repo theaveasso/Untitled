@@ -30,7 +30,7 @@ generate_imgui_bindings :: (args: [] string) -> bool {
     no_demo := array_find(args, "-no_demo");
     compile := array_find(args, "-compile");
     compile_debug := array_find(args, "-debug");
-    backend_dx11  := array_find(args, "-backend_d3d11");
+    backend_dx12  := array_find(args, "-backend_d3d12");
 
     if compile {
 
@@ -57,9 +57,9 @@ generate_imgui_bindings :: (args: [] string) -> bool {
         if !success return false;
     }
 
-    if backend_dx11 {
+    if backend_dx12 {
 
-        success := compile_and_generate_bindings_backend_d3d11(compile_debug);
+        success := compile_and_generate_bindings_backend_d3d12(compile_debug);
         return success;
     }
 
@@ -107,13 +107,13 @@ EOF
     return success;
 }
 
-compile_and_generate_bindings_backend_d3d11 :: (compile_debug : bool) -> bool {
+compile_and_generate_bindings_backend_d3d12 :: (compile_debug : bool) -> bool {
 
     success := false;
-    array_add(*prefixes_to_keep, "ImGui_ImplDX11_", "ImGui_ImplWin32_");
+    array_add(*prefixes_to_keep, "ImGui_ImplDX12_", "ImGui_ImplWin32_");
 
     src_files := string.[
-        "backends/imgui_impl_dx11.cpp",
+        "backends/imgui_impl_dx12.cpp",
         "backends/imgui_impl_win32.cpp",
     ];
 
@@ -121,7 +121,7 @@ compile_and_generate_bindings_backend_d3d11 :: (compile_debug : bool) -> bool {
         make_directory_if_it_does_not_exist("backends/windows");
 
         // We set IMGUI_DISABLE_WIN32_DEFAULT_IME_FUNCTIONS. Otherwise all users of the ImGui module have to link against "imm32".
-        success = build_cpp_static_lib("backends/windows/ImGui_d3d11.static", ..src_files, extra = .["/DIMGUI_DISABLE_WIN32_DEFAULT_IME_FUNCTIONS", tprint("/I%", IMGUI_PATH)], debug=compile_debug);
+        success = build_cpp_static_lib("backends/windows/ImGui_d3d12.static", ..src_files, extra = .["/DIMGUI_DISABLE_WIN32_DEFAULT_IME_FUNCTIONS", tprint("/I%", IMGUI_PATH)], debug=compile_debug);
         if !success return false;
     }
 
@@ -134,17 +134,17 @@ compile_and_generate_bindings_backend_d3d11 :: (compile_debug : bool) -> bool {
         #if OS == .WINDOWS {
 
             array_add(*libpaths, "backends/windows");
-            array_add(*libnames, "ImGui_d3d11.static");
-            output_filename = "backends/windows/windows_d3d11.jai";
+            array_add(*libnames, "ImGui_d3d12.static");
+            output_filename = "backends/windows/windows_d3d12.jai";
             generate_library_declarations = false;
 
             footer = #string EOF
-imgui_d3d11 :: #library,no_dll "ImGui_d3d11.static";
+imgui_d3d12 :: #library,no_dll "ImGui_d3d12.static";
 EOF
         }
 
         array_add(*include_paths, IMGUI_PATH);
-        array_add(*source_files, "backends/imgui_impl_dx11.h", "backends/imgui_impl_win32.h");
+        array_add(*source_files, "backends/imgui_impl_dx12.h", "backends/imgui_impl_win32.h");
         array_add(*extra_clang_arguments, "-x", "c++", "-DWIN32_LEAN_AND_MEAN");
         array_add(*flatten_namespaces, "ImGui");
         array_add(*strip_prefixes, "ImGui", "Imgui");
