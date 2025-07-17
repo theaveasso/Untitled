@@ -1,6 +1,5 @@
 cbuffer Scene_CBuffer : register(b0) {
     float4x4 transform;
-    float4   offset;
 };
 
 struct VS_Input {
@@ -16,7 +15,7 @@ struct PS_Input {
 PS_Input VSMain(VS_Input vin) {
 
     PS_Input result;
-    result.position = float4(vin.position, 1.0f);
+    result.position = mul(float4(vin.position, 1.0f), transform);
     result.color    = vin.color;
     return result;
 }

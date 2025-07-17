@@ -17,6 +17,7 @@ Window_Info :: struct {
 Untitled_State :: struct {
     current_window_info: Window_Info;
     d3d12:               D3D12_CONTEXT;
+    camera:              Camera;
 }
 
 #add_context untitled : *Untitled_State;
@@ -26,6 +27,8 @@ main :: () {
     hwnd := create_window(window_width, window_height, "Untitled", wanted_msaa=WANTED_MSAA, background_color_rgb = .[0, 0, 0]);
     
     state.current_window_info = .{ hwnd=hwnd, window_width=window_width, window_height=window_height};
+
+    state.camera.viewpoint = .{0, 0, -1};
 
     ok_or_exit(backend_init(*state.current_window_info));
     load_assets();
@@ -41,6 +44,8 @@ main :: () {
                     if is_key_down(.ESCAPE) g_should_quit = true;
             }
         }
+
+        camera_update();
 
         backend_update();
         backend_render();
@@ -72,6 +77,8 @@ Input :: #import "Input";
 
 #load "d3d12.jai";
 #load "utils.jai";
+#load "camera.jai";
+#load "math.jai";
 
 is_key_down :: inline (key_code : Input.Key_Code) -> bool { return (Input.input_button_states[cast (s64) key_code] & .DOWN) != 0; }
 

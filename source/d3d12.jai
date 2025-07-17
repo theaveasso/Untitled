@@ -1,6 +1,5 @@
 Scene_CBuffer :: struct {
     transform:  Matrix4;
-    offset:     float;
 }
 
 Window_Resolution :: struct {
@@ -53,6 +52,7 @@ D3D12_CONTEXT :: struct {
     post\_vertex_buffer_view:   D3D12_VERTEX_BUFFER_VIEW;
     scene_constant_buffer:      *ID3D12Resource;
 
+    cbv_mapaddr: *void;
     scene_cbuffer: Scene_CBuffer;
 
     // synchronization objects
@@ -185,8 +185,8 @@ backend_init :: (info: *Window_Info) -> bool {
     return true;
 }
 
-quad_width := 20;
-quad_height := 720;
+quad_width := 0.5;
+quad_height := 0.5;
 
 load_assets :: () {
     CheckInit();
@@ -389,24 +389,29 @@ load_assets :: () {
 
     // create the constant buffer
     {
-        cbuffer_desc := D3D12_RESOURCE_DESC_INIT_AS_BUFFER(xx CalculateConstantBufferByteSize((size_of(Scene_CBuffer) * state.d3d12.ctx_buffer_count)));
-        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(state.d3d12.device, *D3D12_HEAP_PROPERTIES_INIT(.UPLOAD), .NONE, *cbuffer_desc, .COMMON, null, *uid(ID3D12Resource_UUID), xx *state.d3d12.scene_constant_buffer)), "load_size_dependent_resource: Failed to create CommittedResource!");
-        cbv_desc: D3D12_CONSTANT_BUFFER_VIEW_DESC;
-        cbv_desc.BufferLocation = ID3D12Resource_GetGPUVirtualAddress(state.d3d12.scene_constant_buffer);
-        cbv_desc.SizeInBytes = xx CalculateConstantBufferByteSize(size_of(Scene_CBuffer));
-        
+        aligned_cb_size := CalculateConstantBufferByteSize(size_of(Scene_CBuffer));
+        total_size := aligned_cb_size * state.d3d12.ctx_buffer_count;
+        cbuffer_desc := D3D12_RESOURCE_DESC_INIT_AS_BUFFER(xx total_size);
+        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(state.d3d12.device, *D3D12_HEAP_PROPERTIES_INIT(.UPLOAD), .NONE, *cbuffer_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *state.d3d12.scene_constant_buffer)), "load_size_dependent_resource: Failed to create CommittedResource!");
+
+        base_buffer_location := ID3D12Resource_GetGPUVirtualAddress(state.d3d12.scene_constant_buffer);
+
         cpu_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(state.d3d12.cbvsrvuav_heap);
         cpu_handle.ptr += xx (1 * state.d3d12.cbvsrvuav_descriptor_size);
         
+        cbv_desc: D3D12_CONSTANT_BUFFER_VIEW_DESC;
+        cbv_desc.SizeInBytes = xx CalculateConstantBufferByteSize(size_of(Scene_CBuffer));
         for i: 0..state.d3d12.ctx_buffer_count - 1 {
+            cbv_desc.BufferLocation = xx base_buffer_location + (i * xx CalculateConstantBufferByteSize(size_of(Scene_CBuffer)));
             ID3D12Device_CreateConstantBufferView(state.d3d12.device, *cbv_desc, cpu_handle);
             cpu_handle.ptr += xx (1 * state.d3d12.cbvsrvuav_descriptor_size);
         }
 
+        // map and initialize the constant buffer.
+        // we don't unmap this until the app closes. keeping things mapped for the lifetime of the resource is okay
         read_range : D3D12_RANGE = .{0, 0};
-        cpu_mapaddr : *void;
-        ID3D12Resource_Map(state.d3d12.scene_constant_buffer, 0, *read_range, xx *cpu_mapaddr);
-        memcpy(cpu_mapaddr, *state.d3d12.scene_cbuffer, size_of(Scene_CBuffer));
+        ID3D12Resource_Map(state.d3d12.scene_constant_buffer, 0, *read_range, xx *state.d3d12.cbv_mapaddr);
+        memcpy(state.d3d12.cbv_mapaddr, *state.d3d12.scene_cbuffer, size_of(Scene_CBuffer));
     }
 
     // close the resource creation command list and execute it to begin the vbuffer copy into the default heap
@@ -537,6 +542,11 @@ move_to_next_frame :: () {
 backend_update :: () {
 
     CheckInit();
+    scene_cbuffer := state.d3d12.scene_cbuffer;
+    scene_cbuffer.transform = transpose(state.camera.viewproj);
+
+    offset := state.d3d12.ctx_current_frame_index * CalculateConstantBufferByteSize(size_of(Scene_CBuffer));
+    memcpy(state.d3d12.cbv_mapaddr + offset, *scene_cbuffer, size_of(Scene_CBuffer));
 }
 
 backend_render :: () {
