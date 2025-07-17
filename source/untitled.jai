@@ -79,6 +79,7 @@ Input :: #import "Input";
 #load "utils.jai";
 #load "camera.jai";
 #load "math.jai";
+#load "d3d12/module.jai";
 
 is_key_down :: inline (key_code : Input.Key_Code) -> bool { return (Input.input_button_states[cast (s64) key_code] & .DOWN) != 0; }
 

@@ -1,5 +1,7 @@
 CalculateConstantBufferByteSize :: inline (bytesize: int) -> int { return (bytesize + 255) & ~255; }
 
+NAME_D3D12_OBJECT :: inline (object: *ID3D12Object, name: string) { ID3D12Object_SetName(object, xx name.data); }
+
 HR :: inline (hr: HRESULT, infoqueue: *ID3D12InfoQueue = null, $call := #caller_code, loc :=  #caller_location) -> bool {
     
     call_string :: #run -> string {
@@ -42,7 +44,7 @@ HR :: inline (hr: HRESULT, infoqueue: *ID3D12InfoQueue = null, $call := #caller_
     return true;
 }
 
-Compile_Shader :: (shader: **ID3DBlob, error: *ID3DBlob, file_name: string, entry_point: string, target: string) -> bool {
+Compile_Shader :: (using _shader: *Shader, error: *ID3DBlob, file_name: string, entry_point: string, target: string) -> bool {
 
     compile_flags := D3DCOMPILE.ENABLE_STRICTNESS;
     #if DEBUG {
@@ -52,12 +54,15 @@ Compile_Shader :: (shader: **ID3DBlob, error: *ID3DBlob, file_name: string, entr
 
     result: HRESULT;
     defines: [] string;
-    shader.*, error, result = D3DCompileFromFile(file_name, defines, null, entry_point, target, xx compile_flags, 0);
+    shader, error, result = D3DCompileFromFile(file_name, defines, null, entry_point, target, xx compile_flags, 0);
     if FAILED(result) {
         msg := ID3D10Blob_GetBufferPointer(error); 
         log_error("load_assets: Failed to compile from file %", to_string(msg));
         return false;
     }
+
+    HR(D3DReflect(ID3D10Blob_GetBufferPointer(shader), ID3D10Blob_GetBufferSize(shader), *uid(ID3D12ShaderReflection_UUID), xx *reflector));
+    HR(ID3D12ShaderReflection_GetDesc(reflector, *desc));
 
     return true;
 }
