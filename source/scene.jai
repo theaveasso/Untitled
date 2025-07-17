@@ -1,0 +1,3 @@
+Scene :: struct {
+    entities: [..] *Entity;
+}

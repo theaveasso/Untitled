@@ -20,10 +20,14 @@ Untitled_State :: struct {
     camera:              Camera;
     control_camera:      bool;
 
+    scene:               Scene;
+
     deltatime := 0.01667;
 }
 
 #add_context untitled : *Untitled_State;
+
+MAX_ENTITIES :: 1000;
 
 main :: () {
     CheckInit();
@@ -31,8 +35,10 @@ main :: () {
     
     state.current_window_info = .{ hwnd=hwnd, window_width=window_width, window_height=window_height};
 
-    state.camera.viewpoint = .{0, 0, -2};
     state.camera.position = .{0, 0, 2};
+
+    e1 := Entity.{world=make_col_translation_matrix4(.{0, 0, 0})};
+    array_add(*state.scene.entities, *e1);
 
     ok_or_exit(backend_init(*state.current_window_info));
     load_assets();
@@ -52,24 +58,6 @@ main :: () {
                     if is_key_down(.ESCAPE) g_should_quit = true;
             }
         }
-
-// world   {0.76705, 7.45058E-09, -0.64158, 0.00}
-// {0.21896, 0.93996, 0.26178, 0.00}
-// {0.60306, -0.34128, 0.721, 0.00}
-// {0.00, 0.00, 0.00, 1.00} 0 float4x4 (column_major)
-// transform {1.44074, 0.00, 0.00, 0.00}
-// {0.00, 1.92098, 0.00, 0.00}
-// {0.00, 0.00, 1.0001, 1.00}
-// {0.00, 0.00, 1.90019, 2.00} 64 float4x4 (column_major)
-
-// world   {0.0902, 0.00, -0.99592, 0.00}
-// {0.67171, 0.73831, 0.06084, 0.00}
-// {0.7353, -0.67446, 0.0666, 0.00}
-// {0.00, 0.00, 0.00, 1.00} 0 float4x4 (column_major)
-// transform {1.44074, 0.00, 0.00, 0.00}
-// {0.00, 1.92098, 0.00, 0.00}
-// {0.00, 0.00, 1.0001, 1.00}
-// {0.00, 0.00, -0.10001, 0.00} 64 float4x4 (column_major)
 
         backend_update();
         backend_render();
@@ -105,6 +93,10 @@ Input :: #import "Input";
 #load "utils.jai";
 #load "camera.jai";
 #load "math.jai";
+#load "entity.jai";
+#load "mesh.jai";
+#load "material.jai";
+#load "scene.jai";
 #load "d3d12/module.jai";
 
 is_key_down :: inline (key_code : Input.Key_Code) -> bool { return (Input.input_button_states[cast (s64) key_code] & .DOWN) != 0; }

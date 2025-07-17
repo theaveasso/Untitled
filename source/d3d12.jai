@@ -82,7 +82,9 @@ resolution_options : [] Window_Resolution = .[
 ];
 
 backend_init :: (info: *Window_Info) -> bool {
+
     CheckInit();
+    using state.d3d12;
 
     dxgi_factory_flags : u32 = 0;
     #if DEBUG {
@@ -118,72 +120,69 @@ backend_init :: (info: *Window_Info) -> bool {
 
     ok_or_exit(adapter != null, "backend init: Failed to enumerate D3D12Adapter");
 
-    ok_or_exit(HR(D3D12CreateDevice(adapter, ._12_0, *uid(ID3D12Device_UUID), xx *state.d3d12.device)), "backend init: Failed to create D3D12Device");
+    ok_or_exit(HR(D3D12CreateDevice(adapter, ._12_0, *uid(ID3D12Device_UUID), xx *device)), "backend init: Failed to create D3D12Device");
     #if DEBUG {
-        if HR(IUnknown_QueryInterface(state.d3d12.device, *uid(ID3D12InfoQueue_UUID), xx *state.d3d12.infoqueue)) {
+        if HR(IUnknown_QueryInterface(device, *uid(ID3D12InfoQueue_UUID), xx *infoqueue)) {
             #if BREAK_ON_ERROR {
-                ID3D12InfoQueue_SetBreakOnSeverity(state.d3d12.infoqueue, .CORRUPTION, .TRUE);
-                ID3D12InfoQueue_SetBreakOnSeverity(state.d3d12.infoqueue, .ERROR, .TRUE);
-                ID3D12InfoQueue_SetBreakOnSeverity(state.d3d12.infoqueue, .WARNING, .TRUE);
+                ID3D12InfoQueue_SetBreakOnSeverity(infoqueue, .CORRUPTION, .TRUE);
+                ID3D12InfoQueue_SetBreakOnSeverity(infoqueue, .ERROR, .TRUE);
+                ID3D12InfoQueue_SetBreakOnSeverity(infoqueue, .WARNING, .TRUE);
             }
 
-            size := ID3D12InfoQueue_GetStorageFilterStackSize(state.d3d12.infoqueue);
+            size := ID3D12InfoQueue_GetStorageFilterStackSize(infoqueue);
             while size > 1 {
-                ID3D12InfoQueue_ClearStorageFilter(state.d3d12.infoqueue);
-                size = ID3D12InfoQueue_GetStorageFilterStackSize(state.d3d12.infoqueue);
+                ID3D12InfoQueue_ClearStorageFilter(infoqueue);
+                size = ID3D12InfoQueue_GetStorageFilterStackSize(infoqueue);
             }
 
-            ID3D12InfoQueue_ClearStoredMessages(state.d3d12.infoqueue);
-            ID3D12InfoQueue_SetMuteDebugOutput(state.d3d12.infoqueue, .FALSE);
+            ID3D12InfoQueue_ClearStoredMessages(infoqueue);
+            ID3D12InfoQueue_SetMuteDebugOutput(infoqueue, .FALSE);
         }
     }
 
     queue_desc: D3D12_COMMAND_QUEUE_DESC;
     queue_desc.Flags = .NONE;
     queue_desc.Type  = .DIRECT;
-    ok_or_exit(HR(ID3D12Device_CreateCommandQueue(state.d3d12.device, *queue_desc, *uid(ID3D12CommandQueue_UUID), xx *state.d3d12.commandq)), "backend init: Failed to create D3D12CommandQueue!");
-    NAME_D3D12_OBJECT(state.d3d12.commandq, "commandq");
+    ok_or_exit(HR(ID3D12Device_CreateCommandQueue(device, *queue_desc, *uid(ID3D12CommandQueue_UUID), xx *commandq)), "backend init: Failed to create D3D12CommandQueue!");
+    NAME_D3D12_OBJECT(commandq, "commandq");
 
-    // ok_or_exit(HR(ID3D12Device_CreateFence(state.d3d12.device, 0, .NONE, *uid(ID3D12Fence_UUID), xx *state.d3d12.fence)), "backend init: Failed to create D3D12Fence!");
-    // state.d3d12.fence_event = CreateEventW(null, 0, 0, null);
-
-    state.d3d12.ctx_buffer_count = 2;
+    ctx_buffer_count = 2;
 
     swapchain_desc: DXGI_SWAP_CHAIN_DESC1;
-    swapchain_desc.BufferCount  = state.d3d12.ctx_buffer_count;
+    swapchain_desc.BufferCount  = ctx_buffer_count;
     swapchain_desc.Width        = xx info.window_width;
     swapchain_desc.Height       = xx info.window_height;
     swapchain_desc.Format       = .R8G8B8A8_UNORM;
     swapchain_desc.BufferUsage  = .RENDER_TARGET_OUTPUT;
     swapchain_desc.SwapEffect   = .FLIP_DISCARD;
     swapchain_desc.SampleDesc.Count = 1;
-    swapchain_desc.Flags        = ifx state.d3d12.tearing_support then xx DXGI_SWAP_CHAIN_FLAG.ALLOW_TEARING else cast(u32) 0;
+    swapchain_desc.Flags        = ifx tearing_support then xx DXGI_SWAP_CHAIN_FLAG.ALLOW_TEARING else cast(u32) 0;
 
-    ok_or_exit(HR(IDXGIFactory2_CreateSwapChainForHwnd(factory, xx state.d3d12.commandq, info.hwnd, *swapchain_desc, null, null, xx *state.d3d12.swapchain), state.d3d12.infoqueue), "backend init: Failed to create D3D12Swapchain!");
+    ok_or_exit(HR(IDXGIFactory2_CreateSwapChainForHwnd(factory, xx commandq, info.hwnd, *swapchain_desc, null, null, xx *swapchain), infoqueue), "backend init: Failed to create D3D12Swapchain!");
 
-    if state.d3d12.tearing_support IDXGIFactory_MakeWindowAssociation(factory, info.hwnd, xx DXGI_MWA.NO_ALT_ENTER);
-    state.d3d12.ctx_current_frame_index = IDXGISwapChain3_GetCurrentBackBufferIndex(state.d3d12.swapchain);
+    if tearing_support IDXGIFactory_MakeWindowAssociation(factory, info.hwnd, xx DXGI_MWA.NO_ALT_ENTER);
+    ctx_current_frame_index = IDXGISwapChain3_GetCurrentBackBufferIndex(swapchain);
 
     rtv_heap_desc: D3D12_DESCRIPTOR_HEAP_DESC;
-    rtv_heap_desc.NumDescriptors = state.d3d12.ctx_buffer_count + 1; // +1 for the intermediate render target
+    rtv_heap_desc.NumDescriptors = ctx_buffer_count + 1; // +1 for the intermediate render target
     rtv_heap_desc.Type           = .RTV;
     rtv_heap_desc.Flags          = .NONE;
-    ok_or_exit(HR(ID3D12Device_CreateDescriptorHeap(state.d3d12.device, *rtv_heap_desc, *uid(ID3D12DescriptorHeap_UUID), xx *state.d3d12.rtv_heap)), "backend init: Failed to create D3D12DescriptorHeap!");
+    ok_or_exit(HR(ID3D12Device_CreateDescriptorHeap(device, *rtv_heap_desc, *uid(ID3D12DescriptorHeap_UUID), xx *rtv_heap)), "backend init: Failed to create D3D12DescriptorHeap!");
     
     cbvsrvuav_heap_desc: D3D12_DESCRIPTOR_HEAP_DESC;
-    cbvsrvuav_heap_desc.NumDescriptors = state.d3d12.ctx_buffer_count + 1; // +1 for the intermediate render target
+    cbvsrvuav_heap_desc.NumDescriptors = ctx_buffer_count * MAX_ENTITIES + 1; // +1 for the intermediate render target
     cbvsrvuav_heap_desc.Type           = .CBV_SRV_UAV;
     cbvsrvuav_heap_desc.Flags          = .SHADER_VISIBLE;
-    ok_or_exit(HR(ID3D12Device_CreateDescriptorHeap(state.d3d12.device, *cbvsrvuav_heap_desc, *uid(ID3D12DescriptorHeap_UUID), xx *state.d3d12.cbvsrvuav_heap)), "backend init: Failed to create D3D12DescriptorHeap!");
+    ok_or_exit(HR(ID3D12Device_CreateDescriptorHeap(device, *cbvsrvuav_heap_desc, *uid(ID3D12DescriptorHeap_UUID), xx *cbvsrvuav_heap)), "backend init: Failed to create D3D12DescriptorHeap!");
 
-    state.d3d12.rtv_descriptor_size         = ID3D12Device_GetDescriptorHandleIncrementSize(state.d3d12.device, .RTV);
-    state.d3d12.cbvsrvuav_descriptor_size   = ID3D12Device_GetDescriptorHandleIncrementSize(state.d3d12.device, .CBV_SRV_UAV);
+    rtv_descriptor_size         = ID3D12Device_GetDescriptorHandleIncrementSize(device, .RTV);
+    cbvsrvuav_descriptor_size   = ID3D12Device_GetDescriptorHandleIncrementSize(device, .CBV_SRV_UAV);
 
-    array_resize(*state.d3d12.scene_cmdallocator, state.d3d12.ctx_buffer_count);
-    array_resize(*state.d3d12.post\_cmdallocator, state.d3d12.ctx_buffer_count);
-    for i: 0..state.d3d12.ctx_buffer_count - 1 {
-        ok_or_exit(HR(ID3D12Device_CreateCommandAllocator(state.d3d12.device, .DIRECT, *uid(ID3D12CommandAllocator_UUID), xx *state.d3d12.scene_cmdallocator[i])), "backend init: Failed to create D3D12CommandAllocator!");
-        ok_or_exit(HR(ID3D12Device_CreateCommandAllocator(state.d3d12.device, .DIRECT, *uid(ID3D12CommandAllocator_UUID), xx *state.d3d12.post\_cmdallocator[i])), "backend init: Failed to create D3D12CommandAllocator!");
+    array_resize(*scene_cmdallocator, ctx_buffer_count);
+    array_resize(*post\_cmdallocator, ctx_buffer_count);
+    for i: 0..ctx_buffer_count - 1 {
+        ok_or_exit(HR(ID3D12Device_CreateCommandAllocator(device, .DIRECT, *uid(ID3D12CommandAllocator_UUID), xx *scene_cmdallocator[i])), "backend init: Failed to create D3D12CommandAllocator!");
+        ok_or_exit(HR(ID3D12Device_CreateCommandAllocator(device, .DIRECT, *uid(ID3D12CommandAllocator_UUID), xx *post\_cmdallocator[i])), "backend init: Failed to create D3D12CommandAllocator!");
     }
 
     safe_release_and_reset(*factory);
@@ -196,12 +195,14 @@ quad_width := 0.5;
 quad_height := 0.5;
 
 load_assets :: () {
+
     CheckInit();
+    using state.d3d12;
 
     // This is the highest version the sample supports. If CheckFeatureSupport succeeds, the HighestVersion returned will not be greater than this.
     feature_data : D3D12_FEATURE_DATA_ROOT_SIGNATURE;
     feature_data.HighestVersion = ._1_1;
-    if !HR(ID3D12Device_CheckFeatureSupport(state.d3d12.device, .ROOT_SIGNATURE, *feature_data, size_of(D3D12_FEATURE_DATA_ROOT_SIGNATURE))) {
+    if !HR(ID3D12Device_CheckFeatureSupport(device, .ROOT_SIGNATURE, *feature_data, size_of(D3D12_FEATURE_DATA_ROOT_SIGNATURE))) {
         feature_data.HighestVersion = ._1_0;
     }
 
@@ -225,8 +226,7 @@ load_assets :: () {
         signature:  *ID3DBlob;
         error:      *ID3DBlob;
         ok_or_exit(HR(D3D12SerializeVersionedRootSignature(*rootsig_desc, *signature, *error)), "load_assets: Failed to serialize versioned root signature!");
-        ok_or_exit(HR(ID3D12Device_CreateRootSignature(state.d3d12.device, 0, ID3D10Blob_GetBufferPointer(signature), ID3D10Blob_GetBufferSize(signature), *uid(ID3D12RootSignature_UUID), xx *state.d3d12.scene_rootsig)), "load_assets: Failed to create D3D12RootSignature");
-        NAME_D3D12_OBJECT(state.d3d12.scene_rootsig, "scene_rootsig");
+        ok_or_exit(HR(ID3D12Device_CreateRootSignature(device, 0, ID3D10Blob_GetBufferPointer(signature), ID3D10Blob_GetBufferSize(signature), *uid(ID3D12RootSignature_UUID), xx *scene_rootsig)), "load_assets: Failed to create D3D12RootSignature");
     }
 
     // Create a rootsig consisting of a desciptor table with a SRV and a sampler
@@ -263,11 +263,10 @@ load_assets :: () {
         signature:  *ID3DBlob;
         error:      *ID3DBlob;
         ok_or_exit(HR(D3D12SerializeVersionedRootSignature(*rootsig_desc, *signature, *error)), "load_assets: Failed to serialize versioned root signature!");
-        ok_or_exit(HR(ID3D12Device_CreateRootSignature(state.d3d12.device, 0, ID3D10Blob_GetBufferPointer(signature), ID3D10Blob_GetBufferSize(signature), *uid(ID3D12RootSignature_UUID), xx *state.d3d12.post_rootsig)), "load_assets: Failed to create D3D12RootSignature");
-        NAME_D3D12_OBJECT(state.d3d12.post_rootsig, "post_rootsig");
+        ok_or_exit(HR(ID3D12Device_CreateRootSignature(device, 0, ID3D10Blob_GetBufferPointer(signature), ID3D10Blob_GetBufferSize(signature), *uid(ID3D12RootSignature_UUID), xx *post_rootsig)), "load_assets: Failed to create D3D12RootSignature");
+        NAME_D3D12_OBJECT(post_rootsig, "post_rootsig");
     }
 
-    // creating pipeling state
     {
         scene_vertex_shader: Shader;
         scene_pixel\_shader: Shader;
@@ -292,43 +291,37 @@ load_assets :: () {
         pso_desc.DSVFormat              = DXGI_FORMAT.UNKNOWN;
         pso_desc.SampleDesc.Count       = 1;
 
-        pso_desc.pRootSignature         = state.d3d12.scene_rootsig;
+        pso_desc.pRootSignature         = scene_rootsig;
         pso_desc.VS                     = D3D12_SHADER_BYTECODE_INIT(scene_vertex_shader.shader);
         pso_desc.PS                     = D3D12_SHADER_BYTECODE_INIT(scene_pixel\_shader.shader);
         input_elem_desc                 := shader_get_input_element(*scene_vertex_shader, .NON_SPLIT);
         pso_desc.InputLayout            = .{input_elem_desc.data, xx input_elem_desc.count};
-        ok_or_exit(HR(ID3D12Device_CreateGraphicsPipelineState(state.d3d12.device, *pso_desc, *uid(ID3D12PipelineState_UUID), xx *state.d3d12.scene_pipeline_state)), "load_assets: Failed to create D3D12GraphicsPipelineState!");
-        NAME_D3D12_OBJECT(state.d3d12.scene_pipeline_state, "scene_pipeline_state");
+        ok_or_exit(HR(ID3D12Device_CreateGraphicsPipelineState(device, *pso_desc, *uid(ID3D12PipelineState_UUID), xx *scene_pipeline_state)), "load_assets: Failed to create D3D12GraphicsPipelineState!");
 
-        pso_desc.pRootSignature         = state.d3d12.post_rootsig;
+        pso_desc.pRootSignature         = post_rootsig;
         pso_desc.VS                     = D3D12_SHADER_BYTECODE_INIT(post_vertex_shader.shader);
         pso_desc.PS                     = D3D12_SHADER_BYTECODE_INIT(post_pixel\_shader.shader);
         scale_elem_desc                 := shader_get_input_element(*post\_vertex_shader, .NON_SPLIT);
         pso_desc.InputLayout            = .{scale_elem_desc.data, xx scale_elem_desc.count};
-        ok_or_exit(HR(ID3D12Device_CreateGraphicsPipelineState(state.d3d12.device, *pso_desc, *uid(ID3D12PipelineState_UUID), xx *state.d3d12.post_pipeline_state)), "load_assets: Failed to create D3D12GraphicsPipelineState!");
-        NAME_D3D12_OBJECT(state.d3d12.post_pipeline_state, "post_pipeline_state");
+        ok_or_exit(HR(ID3D12Device_CreateGraphicsPipelineState(device, *pso_desc, *uid(ID3D12PipelineState_UUID), xx *post_pipeline_state)), "load_assets: Failed to create D3D12GraphicsPipelineState!");
     }
 
     // single use command allocator and command list for resource creating
     cmdallocator : *ID3D12CommandAllocator;
-    ok_or_exit(HR(ID3D12Device_CreateCommandAllocator(state.d3d12.device, .DIRECT, *uid(ID3D12CommandAllocator_UUID), xx *cmdallocator)), "load_asset: Failed to create D3D12CommandAllocator!");
+    ok_or_exit(HR(ID3D12Device_CreateCommandAllocator(device, .DIRECT, *uid(ID3D12CommandAllocator_UUID), xx *cmdallocator)), "load_asset: Failed to create D3D12CommandAllocator!");
     defer safe_release_and_reset(*cmdallocator);
-    NAME_D3D12_OBJECT(cmdallocator, "intermediate_cmdallocator");
 
     cmdlist: *ID3D12GraphicsCommandList;
-    ok_or_exit(HR(ID3D12Device_CreateCommandList(state.d3d12.device, 0, .DIRECT, cmdallocator, null,  *uid(ID3D12CommandList_UUID), xx *cmdlist)), "load_asset: Failed to create D3D12GraphicCommandList!");
+    ok_or_exit(HR(ID3D12Device_CreateCommandList(device, 0, .DIRECT, cmdallocator, null,  *uid(ID3D12CommandList_UUID), xx *cmdlist)), "load_asset: Failed to create D3D12GraphicCommandList!");
     defer safe_release_and_reset(*cmdlist);
-    NAME_D3D12_OBJECT(cmdlist, "intermediate_cmdlist");
     
     // create the command lists
     {
-        ok_or_exit(HR(ID3D12Device_CreateCommandList(state.d3d12.device, 0, .DIRECT, state.d3d12.scene_cmdallocator[state.d3d12.ctx_current_frame_index], null,  *uid(ID3D12CommandList_UUID), xx *state.d3d12.scene_cmdlist)), "load_asset: Failed to create D3D12GraphicCommandList!");
-        ok_or_exit(HR(ID3D12Device_CreateCommandList(state.d3d12.device, 0, .DIRECT, state.d3d12.post\_cmdallocator[state.d3d12.ctx_current_frame_index], null,  *uid(ID3D12CommandList_UUID), xx *state.d3d12.post\_cmdlist)), "load_asset: Failed to create D3D12GraphicCommandList!");
-        NAME_D3D12_OBJECT(state.d3d12.scene_cmdlist, "state.d3d12.scene_cmdlist");
-        NAME_D3D12_OBJECT(state.d3d12.post_cmdlist, "state.d3d12.post_cmdlist");
+        ok_or_exit(HR(ID3D12Device_CreateCommandList(device, 0, .DIRECT, scene_cmdallocator[ctx_current_frame_index], null,  *uid(ID3D12CommandList_UUID), xx *scene_cmdlist)), "load_asset: Failed to create D3D12GraphicCommandList!");
+        ok_or_exit(HR(ID3D12Device_CreateCommandList(device, 0, .DIRECT, post\_cmdallocator[ctx_current_frame_index], null,  *uid(ID3D12CommandList_UUID), xx *post\_cmdlist)), "load_asset: Failed to create D3D12GraphicCommandList!");
 
-        ok_or_exit(HR(ID3D12GraphicsCommandList_Close(state.d3d12.scene_cmdlist)), "load_assets: Failed to close D3D12GraphicsCommandList!");
-        ok_or_exit(HR(ID3D12GraphicsCommandList_Close(state.d3d12.post_cmdlist)), "load_assets: Failed to close D3D12GraphicsCommandList!");
+        ok_or_exit(HR(ID3D12GraphicsCommandList_Close(scene_cmdlist)), "load_assets: Failed to close D3D12GraphicsCommandList!");
+        ok_or_exit(HR(ID3D12GraphicsCommandList_Close(post_cmdlist)), "load_assets: Failed to close D3D12GraphicsCommandList!");
     }
 
     load_size_dependent_resource();
@@ -341,17 +334,11 @@ load_assets :: () {
         x := quad_width  / 2.0;
         y := quad_height / 2.0;
         quadvertices : [] Scene_Vertex = .[
-            // .{.{-0.5,  0.5, 1.0}, .{1.0, 0.0, 0.0, 1.0}},
-            // .{.{ 0.5,  0.5, 1.0}, .{0.0, 1.0, 0.0, 1.0}},
-            // .{.{ 0.5, -0.5, 1.0}, .{0.0, 0.0, 1.0, 1.0}},
-            // .{.{-0.5, -0.5, 1.0}, .{0.0, 0.0, 1.0, 1.0}},
-            // Front face
             .{.{-0.5, -0.5,  0.5}, .{1,0,0,1}},
             .{.{ 0.5, -0.5,  0.5}, .{0,1,0,1}},
             .{.{ 0.5,  0.5,  0.5}, .{0,0,1,1}},
             .{.{-0.5,  0.5,  0.5}, .{1,1,1,1}},
 
-            // Back face
             .{.{-0.5, -0.5, -0.5}, .{1,0,0,1}},
             .{.{ 0.5, -0.5, -0.5}, .{0,1,0,1}},
             .{.{ 0.5,  0.5, -0.5}, .{0,0,1,1}},
@@ -360,8 +347,8 @@ load_assets :: () {
         vertex_buffer_size := size_of(Scene_Vertex) * quadvertices.count;
         vbuffer_desc := D3D12_RESOURCE_DESC_INIT_AS_BUFFER(xx vertex_buffer_size);
 
-        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(state.d3d12.device, *D3D12_HEAP_PROPERTIES_INIT(), .NONE, *vbuffer_desc, .COMMON, null, *uid(ID3D12Resource_UUID), xx *state.d3d12.scene_vertex_buffer)), "load_assets: Failed to create CommittedResource!");
-        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(state.d3d12.device, *D3D12_HEAP_PROPERTIES_INIT(.UPLOAD), .NONE, *vbuffer_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *scene_vertex_upload_buffer)), "load_assets: Failed to create CommittedResource!");
+        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(device, *D3D12_HEAP_PROPERTIES_INIT(), .NONE, *vbuffer_desc, .COMMON, null, *uid(ID3D12Resource_UUID), xx *scene_vertex_buffer)), "load_assets: Failed to create CommittedResource!");
+        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(device, *D3D12_HEAP_PROPERTIES_INIT(.UPLOAD), .NONE, *vbuffer_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *scene_vertex_upload_buffer)), "load_assets: Failed to create CommittedResource!");
 
         cpu_mapaddr: *void;
         read_range: D3D12_RANGE = .{0, 0};
@@ -369,34 +356,27 @@ load_assets :: () {
         memcpy(cpu_mapaddr, xx quadvertices.data, xx vertex_buffer_size);
         ID3D12Resource_Unmap(scene_vertex_upload_buffer, 0, null);
         
-        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(state.d3d12.scene_vertex_buffer, .COMMON, .COPY_DEST));
-        ID3D12GraphicsCommandList_CopyBufferRegion(cmdlist, state.d3d12.scene_vertex_buffer, 0, scene_vertex_upload_buffer, 0, xx vertex_buffer_size);
-        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(state.d3d12.scene_vertex_buffer, .COPY_DEST, .VERTEX_AND_CONSTANT_BUFFER));
+        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(scene_vertex_buffer, .COMMON, .COPY_DEST));
+        ID3D12GraphicsCommandList_CopyBufferRegion(cmdlist, scene_vertex_buffer, 0, scene_vertex_upload_buffer, 0, xx vertex_buffer_size);
+        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(scene_vertex_buffer, .COPY_DEST, .VERTEX_AND_CONSTANT_BUFFER));
         
-        state.d3d12.scene_vertex_buffer_view.BufferLocation = ID3D12Resource_GetGPUVirtualAddress(state.d3d12.scene_vertex_buffer);
-        state.d3d12.scene_vertex_buffer_view.StrideInBytes  = size_of(Scene_Vertex);
-        state.d3d12.scene_vertex_buffer_view.SizeInBytes    = xx vertex_buffer_size;
+        scene_vertex_buffer_view.BufferLocation = ID3D12Resource_GetGPUVirtualAddress(scene_vertex_buffer);
+        scene_vertex_buffer_view.StrideInBytes  = size_of(Scene_Vertex);
+        scene_vertex_buffer_view.SizeInBytes    = xx vertex_buffer_size;
 
         quadindices : [] u32 = .[
-            // 0, 1, 2, 0, 2, 3
-            // Front face
             0, 1, 2, 0, 2, 3,
-            // Right face
             1, 5, 6, 1, 6, 2,
-            // Back face
             5, 4, 7, 5, 7, 6,
-            // Left face
             4, 0, 3, 4, 3, 7,
-            // Top face
             3, 2, 6, 3, 6, 7,
-            // Bottom face
             4, 5, 1, 4, 1, 0,
         ];
         index_buffer_size := size_of(u32) * quadindices.count;
         ibuffer_desc := D3D12_RESOURCE_DESC_INIT_AS_BUFFER(xx index_buffer_size);
 
-        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(state.d3d12.device, *D3D12_HEAP_PROPERTIES_INIT(), .NONE, *ibuffer_desc, .COMMON, null, *uid(ID3D12Resource_UUID), xx *state.d3d12.scene_index_buffer)), "load_assets: Failed to create CommittedResource!");
-        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(state.d3d12.device, *D3D12_HEAP_PROPERTIES_INIT(.UPLOAD), .NONE, *ibuffer_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *scene_index_upload_buffer)), "load_assets: Failed to create CommittedResource!");
+        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(device, *D3D12_HEAP_PROPERTIES_INIT(), .NONE, *ibuffer_desc, .COMMON, null, *uid(ID3D12Resource_UUID), xx *scene_index_buffer)), "load_assets: Failed to create CommittedResource!");
+        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(device, *D3D12_HEAP_PROPERTIES_INIT(.UPLOAD), .NONE, *ibuffer_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *scene_index_upload_buffer)), "load_assets: Failed to create CommittedResource!");
 
         icpu_mapaddr: *void;
         irr: D3D12_RANGE = .{0, 0};
@@ -404,19 +384,18 @@ load_assets :: () {
         memcpy(icpu_mapaddr, xx quadindices.data, xx index_buffer_size);
         ID3D12Resource_Unmap(scene_index_upload_buffer, 0, null);
 
-        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(state.d3d12.scene_index_buffer, .COMMON, .COPY_DEST));
-        ID3D12GraphicsCommandList_CopyBufferRegion(cmdlist, state.d3d12.scene_index_buffer, 0, scene_index_upload_buffer, 0, xx index_buffer_size);
-        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(state.d3d12.scene_index_buffer, .COPY_DEST, .INDEX_BUFFER));
+        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(scene_index_buffer, .COMMON, .COPY_DEST));
+        ID3D12GraphicsCommandList_CopyBufferRegion(cmdlist, scene_index_buffer, 0, scene_index_upload_buffer, 0, xx index_buffer_size);
+        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(scene_index_buffer, .COPY_DEST, .INDEX_BUFFER));
 
-        state.d3d12.scene_index_buffer_view.BufferLocation = ID3D12Resource_GetGPUVirtualAddress(state.d3d12.scene_index_buffer);
-        state.d3d12.scene_index_buffer_view.SizeInBytes    = xx index_buffer_size;
-        state.d3d12.scene_index_buffer_view.Format         = .R32_UINT;
+        scene_index_buffer_view.BufferLocation = ID3D12Resource_GetGPUVirtualAddress(scene_index_buffer);
+        scene_index_buffer_view.SizeInBytes    = xx index_buffer_size;
+        scene_index_buffer_view.Format         = .R32_UINT;
     }
 
     post_vertex_upload_buffer: *ID3D12Resource; defer safe_release_and_reset(*post_vertex_upload_buffer);
     // create/update the fullscreen quad vertex buffer
     {
-        post_vertex_upload_buffer: *ID3D12Resource;
         // define the geoometry for a fullscreen quad
         quadvertices : [] Post_Vertex = .[
             .{.{-1, -1, 0, 1}, .{0, 1}},
@@ -427,9 +406,8 @@ load_assets :: () {
         vertex_buffer_size := size_of(Post_Vertex) * quadvertices.count;
         vbuffer_desc := D3D12_RESOURCE_DESC_INIT_AS_BUFFER(xx vertex_buffer_size);
 
-        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(state.d3d12.device, *D3D12_HEAP_PROPERTIES_INIT(), .NONE, *vbuffer_desc, .COMMON, null, *uid(ID3D12Resource_UUID), xx *state.d3d12.post_vertex_buffer)), "load_size_dependent_resource: Failed to create CommittedResource!");
-        NAME_D3D12_OBJECT(state.d3d12.post_vertex_buffer, "state.d3d12.post_vertex_buffer");
-        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(state.d3d12.device, *D3D12_HEAP_PROPERTIES_INIT(.UPLOAD), .NONE, *vbuffer_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *post_vertex_upload_buffer)), "load_assets: Failed to create CommittedResource!");
+        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(device, *D3D12_HEAP_PROPERTIES_INIT(), .NONE, *vbuffer_desc, .COMMON, null, *uid(ID3D12Resource_UUID), xx *post_vertex_buffer)), "load_size_dependent_resource: Failed to create CommittedResource!");
+        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(device, *D3D12_HEAP_PROPERTIES_INIT(.UPLOAD), .NONE, *vbuffer_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *post_vertex_upload_buffer)), "load_assets: Failed to create CommittedResource!");
 
         cpu_mapaddr: *void;
         read_range: D3D12_RANGE = .{0, 0};
@@ -437,54 +415,54 @@ load_assets :: () {
         memcpy(cpu_mapaddr, xx quadvertices.data, xx vertex_buffer_size);
         ID3D12Resource_Unmap(post_vertex_upload_buffer, 0, null);
         
-        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(state.d3d12.post_vertex_buffer, .COMMON, .COPY_DEST));
-        ID3D12GraphicsCommandList_CopyBufferRegion(cmdlist, state.d3d12.post_vertex_buffer, 0, post_vertex_upload_buffer, 0, xx vertex_buffer_size);
-        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(state.d3d12.post_vertex_buffer, .COPY_DEST, .VERTEX_AND_CONSTANT_BUFFER));
+        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(post_vertex_buffer, .COMMON, .COPY_DEST));
+        ID3D12GraphicsCommandList_CopyBufferRegion(cmdlist, post_vertex_buffer, 0, post_vertex_upload_buffer, 0, xx vertex_buffer_size);
+        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(post_vertex_buffer, .COPY_DEST, .VERTEX_AND_CONSTANT_BUFFER));
         
-        state.d3d12.post_vertex_buffer_view.BufferLocation = ID3D12Resource_GetGPUVirtualAddress(state.d3d12.post_vertex_buffer);
-        state.d3d12.post_vertex_buffer_view.StrideInBytes  = size_of(Post_Vertex);
-        state.d3d12.post_vertex_buffer_view.SizeInBytes    = xx vertex_buffer_size;
+        post_vertex_buffer_view.BufferLocation = ID3D12Resource_GetGPUVirtualAddress(post_vertex_buffer);
+        post_vertex_buffer_view.StrideInBytes  = size_of(Post_Vertex);
+        post_vertex_buffer_view.SizeInBytes    = xx vertex_buffer_size;
     }
 
     // create the constant buffer
     {
         aligned_cb_size := CalculateConstantBufferByteSize(size_of(Scene_CBuffer));
-        total_size := aligned_cb_size * state.d3d12.ctx_buffer_count;
+        total_size := aligned_cb_size * ctx_buffer_count;
         cbuffer_desc := D3D12_RESOURCE_DESC_INIT_AS_BUFFER(xx total_size);
-        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(state.d3d12.device, *D3D12_HEAP_PROPERTIES_INIT(.UPLOAD), .NONE, *cbuffer_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *state.d3d12.scene_constant_buffer)), "load_size_dependent_resource: Failed to create CommittedResource!");
-        NAME_D3D12_OBJECT(state.d3d12.scene_constant_buffer, "state.d3d12.scene_constant_buffer");
+        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(device, *D3D12_HEAP_PROPERTIES_INIT(.UPLOAD), .NONE, *cbuffer_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *scene_constant_buffer)), "load_size_dependent_resource: Failed to create CommittedResource!");
+        NAME_D3D12_OBJECT(scene_constant_buffer, "scene_constant_buffer");
 
-        base_buffer_location := ID3D12Resource_GetGPUVirtualAddress(state.d3d12.scene_constant_buffer);
+        base_buffer_location := ID3D12Resource_GetGPUVirtualAddress(scene_constant_buffer);
 
-        cpu_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(state.d3d12.cbvsrvuav_heap);
-        cpu_handle.ptr += xx (1 * state.d3d12.cbvsrvuav_descriptor_size);
+        cpu_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(cbvsrvuav_heap);
+        cpu_handle.ptr += xx (1 * cbvsrvuav_descriptor_size);
         
         cbv_desc: D3D12_CONSTANT_BUFFER_VIEW_DESC;
         cbv_desc.SizeInBytes = xx CalculateConstantBufferByteSize(size_of(Scene_CBuffer));
-        for i: 0..state.d3d12.ctx_buffer_count - 1 {
+        for i: 0..ctx_buffer_count - 1 {
             cbv_desc.BufferLocation = xx base_buffer_location + (i * xx CalculateConstantBufferByteSize(size_of(Scene_CBuffer)));
-            ID3D12Device_CreateConstantBufferView(state.d3d12.device, *cbv_desc, cpu_handle);
-            cpu_handle.ptr += xx (1 * state.d3d12.cbvsrvuav_descriptor_size);
+            ID3D12Device_CreateConstantBufferView(device, *cbv_desc, cpu_handle);
+            cpu_handle.ptr += xx (1 * cbvsrvuav_descriptor_size);
         }
 
         // map and initialize the constant buffer.
         // we don't unmap this until the app closes. keeping things mapped for the lifetime of the resource is okay
         read_range : D3D12_RANGE = .{0, 0};
-        ID3D12Resource_Map(state.d3d12.scene_constant_buffer, 0, *read_range, xx *state.d3d12.cbv_mapaddr);
-        memcpy(state.d3d12.cbv_mapaddr, *state.d3d12.scene_cbuffer, size_of(Scene_CBuffer));
+        ID3D12Resource_Map(scene_constant_buffer, 0, *read_range, xx *cbv_mapaddr);
+        memcpy(cbv_mapaddr, *scene_cbuffer, size_of(Scene_CBuffer));
     }
 
     // close the resource creation command list and execute it to begin the vbuffer copy into the default heap
     ID3D12GraphicsCommandList_Close(cmdlist);
     cmdlists : [] *ID3D12CommandList = .[cmdlist];
-    ID3D12CommandQueue_ExecuteCommandLists(state.d3d12.commandq, xx cmdlists.count, cmdlists.data);
+    ID3D12CommandQueue_ExecuteCommandLists(commandq, xx cmdlists.count, cmdlists.data);
 
-    array_resize(*state.d3d12.fence_values, state.d3d12.ctx_buffer_count);
+    array_resize(*fence_values, ctx_buffer_count);
     {
-        ok_or_exit(HR(ID3D12Device_CreateFence(state.d3d12.device, state.d3d12.fence_values[state.d3d12.ctx_current_frame_index], .NONE, *uid(ID3D12Fence_UUID), xx *state.d3d12.fence)), "load_assets: Failed to create D3D12Fence");
-        state.d3d12.fence_values[state.d3d12.ctx_current_frame_index] += 1;
-        state.d3d12.fence_event = CreateEventW(null, 0, 0, null);
-        if state.d3d12.fence_event == null {
+        ok_or_exit(HR(ID3D12Device_CreateFence(device, fence_values[ctx_current_frame_index], .NONE, *uid(ID3D12Fence_UUID), xx *fence)), "load_assets: Failed to create D3D12Fence");
+        fence_values[ctx_current_frame_index] += 1;
+        fence_event = CreateEventW(null, 0, 0, null);
+        if fence_event == null {
             log_error("load_assets: Failed to create EventW!");
             exit(1);
         }
@@ -496,16 +474,18 @@ load_assets :: () {
 load_size_dependent_resource :: () {
 
     CheckInit();
+    using state.d3d12;
+
     update_post_view_and_scissor();
 
     // create frame resource
     {
-        array_resize(*state.d3d12.render_targets, state.d3d12.ctx_buffer_count);
+        array_resize(*render_targets, ctx_buffer_count);
         rtv_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(state.d3d12.rtv_heap);
-        for i: 0..state.d3d12.ctx_buffer_count - 1 {
-            IDXGISwapChain_GetBuffer(state.d3d12.swapchain, xx i, *uid(ID3D12Resource_UUID), xx *state.d3d12.render_targets[i]);
-            ID3D12Device_CreateRenderTargetView(state.d3d12.device, state.d3d12.render_targets[i], null, rtv_handle);
-            rtv_handle.ptr += xx (1 * state.d3d12.rtv_descriptor_size);
+        for i: 0..ctx_buffer_count - 1 {
+            IDXGISwapChain_GetBuffer(swapchain, xx i, *uid(ID3D12Resource_UUID), xx *render_targets[i]);
+            ID3D12Device_CreateRenderTargetView(device, render_targets[i], null, rtv_handle);
+            rtv_handle.ptr += xx (1 * rtv_descriptor_size);
         }
     }
 }
@@ -611,19 +591,6 @@ backend_update :: () {
     }
 
     camera_update();
-
-    yaw:    Quaternion;
-    pitch:  Quaternion;
-    set_from_axis_and_angle(*yaw, .{0, 1, 0}, cast(float) t);
-    set_from_axis_and_angle(*pitch, .{1, 0, 0}, cast(float) t * 0.5);
-    world := rotation_matrix_lh(Matrix4, yaw * pitch);
-
-    scene_cbuffer := state.d3d12.scene_cbuffer;
-    scene_cbuffer.transform = transpose(state.camera.viewproj);
-    scene_cbuffer.world     = transpose(world);
-
-    offset := state.d3d12.ctx_current_frame_index * CalculateConstantBufferByteSize(size_of(Scene_CBuffer));
-    memcpy(state.d3d12.cbv_mapaddr + offset, *scene_cbuffer, size_of(Scene_CBuffer));
 }
 
 backend_render :: () {
@@ -640,52 +607,65 @@ backend_render :: () {
 backend_populate_commandlists :: () {
 
     CheckInit();
+    using state.d3d12;
     
-    scene_cmdlist := state.d3d12.scene_cmdlist;
-    post\_cmdlist := state.d3d12.post\_cmdlist;
-
-    ok_or_exit(HR(ID3D12CommandAllocator_Reset(state.d3d12.scene_cmdallocator[state.d3d12.ctx_current_frame_index])), "backend_populate_commandlists: Failed to reset D3D12CommandAllocator!");
-    ok_or_exit(HR(ID3D12CommandAllocator_Reset(state.d3d12.post_cmdallocator[state.d3d12.ctx_current_frame_index])), "backend_populate_commandlists: Failed to reset D3D12CommandAllocator!");
+    ok_or_exit(HR(ID3D12CommandAllocator_Reset(scene_cmdallocator[ctx_current_frame_index])), "backend_populate_commandlists: Failed to reset D3D12CommandAllocator!");
+    ok_or_exit(HR(ID3D12CommandAllocator_Reset(post_cmdallocator[ctx_current_frame_index])), "backend_populate_commandlists: Failed to reset D3D12CommandAllocator!");
     
-    ok_or_exit(HR(ID3D12GraphicsCommandList_Reset(scene_cmdlist, state.d3d12.scene_cmdallocator[state.d3d12.ctx_current_frame_index], state.d3d12.scene_pipeline_state)), "backend_populate_commandlists: Failed to reset D3D12CommandList!");
-    ok_or_exit(HR(ID3D12GraphicsCommandList_Reset(post_cmdlist, state.d3d12.post_cmdallocator[state.d3d12.ctx_current_frame_index], state.d3d12.post_pipeline_state)), "backend_populate_commandlists: Failed to reset D3D12CommandList!");
+    ok_or_exit(HR(ID3D12GraphicsCommandList_Reset(scene_cmdlist, scene_cmdallocator[ctx_current_frame_index], scene_pipeline_state)), "backend_populate_commandlists: Failed to reset D3D12CommandList!");
+    ok_or_exit(HR(ID3D12GraphicsCommandList_Reset(post_cmdlist, post_cmdallocator[ctx_current_frame_index], post_pipeline_state)), "backend_populate_commandlists: Failed to reset D3D12CommandList!");
     
     // populate scene commandlist to render scene to intermediate render target
     {
-        ID3D12GraphicsCommandList_SetGraphicsRootSignature(scene_cmdlist, state.d3d12.scene_rootsig);
-        heaps: [] *ID3D12DescriptorHeap = .[state.d3d12.cbvsrvuav_heap];
+        ID3D12GraphicsCommandList_SetGraphicsRootSignature(scene_cmdlist, scene_rootsig);
+        heaps: [] *ID3D12DescriptorHeap = .[cbvsrvuav_heap];
         ID3D12GraphicsCommandList_SetDescriptorHeaps(scene_cmdlist, xx heaps.count, xx heaps.data);
 
-        cbv_handle := ID3D12DescriptorHeap_GetGPUDescriptorHandleForHeapStart(state.d3d12.cbvsrvuav_heap);
-        cbv_handle.ptr += xx ((state.d3d12.ctx_current_frame_index + 1) * state.d3d12.cbvsrvuav_descriptor_size);
+        cbv_handle := ID3D12DescriptorHeap_GetGPUDescriptorHandleForHeapStart(cbvsrvuav_heap);
+        cbv_handle.ptr += xx ((ctx_current_frame_index + 1) * cbvsrvuav_descriptor_size);
         ID3D12GraphicsCommandList_SetGraphicsRootDescriptorTable(scene_cmdlist, 0, cbv_handle);
-        ID3D12GraphicsCommandList_RSSetViewports(scene_cmdlist, 1, *state.d3d12.scene_viewport);
-        ID3D12GraphicsCommandList_RSSetScissorRects(scene_cmdlist, 1, *state.d3d12.scene_scissor_rect);
+        ID3D12GraphicsCommandList_RSSetViewports(scene_cmdlist, 1, *scene_viewport);
+        ID3D12GraphicsCommandList_RSSetScissorRects(scene_cmdlist, 1, *scene_scissor_rect);
     
-        rtv_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(state.d3d12.rtv_heap);
-        rtv_handle.ptr += xx (state.d3d12.ctx_buffer_count * state.d3d12.rtv_descriptor_size);
+        rtv_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(rtv_heap);
+        rtv_handle.ptr += xx (ctx_buffer_count * rtv_descriptor_size);
         ID3D12GraphicsCommandList_OMSetRenderTargets(scene_cmdlist, 1, *rtv_handle, .FALSE, null);
 
         clear_color : [4] float = .[0, 0, 0, 0];
         ID3D12GraphicsCommandList_ClearRenderTargetView(scene_cmdlist, rtv_handle, *clear_color, 0, null);
         ID3D12GraphicsCommandList_IASetPrimitiveTopology(scene_cmdlist, .TRIANGLELIST);
-        ID3D12GraphicsCommandList_IASetVertexBuffers(scene_cmdlist, 0, 1, *state.d3d12.scene_vertex_buffer_view);
-        ID3D12GraphicsCommandList_IASetIndexBuffer(scene_cmdlist, *state.d3d12.scene_index_buffer_view);
+        ID3D12GraphicsCommandList_IASetVertexBuffers(scene_cmdlist, 0, 1, *scene_vertex_buffer_view);
+        ID3D12GraphicsCommandList_IASetIndexBuffer(scene_cmdlist, *scene_index_buffer_view);
 
-        ID3D12GraphicsCommandList_DrawIndexedInstanced(scene_cmdlist, 36, 1, 0, 0, 0);
+        for state.scene.entities {
+
+            yaw:    Quaternion;
+            pitch:  Quaternion;
+            set_from_axis_and_angle(*yaw, .{0, 1, 0}, cast(float) state.deltatime);
+            set_from_axis_and_angle(*pitch, .{1, 0, 0}, cast(float) state.deltatime * 0.5);
+
+            it.world = rotation_matrix_lh(Matrix4, yaw * pitch) * it.world;
+
+            cbuffer : Scene_CBuffer = .{world = transpose(it.world), transform = transpose(state.camera.viewproj)};
+
+            offset := ctx_current_frame_index * CalculateConstantBufferByteSize(size_of(Scene_CBuffer));
+            memcpy(cbv_mapaddr + offset, *cbuffer, size_of(Scene_CBuffer));
+            ID3D12GraphicsCommandList_DrawIndexedInstanced(scene_cmdlist, 36, 1, 0, 0, 0);
+        }
+
     }
 
     ok_or_exit(HR(ID3D12GraphicsCommandList_Close(scene_cmdlist)), "backend_populate_commandlists: Failed to close D3D12GraphicsCommandList");
 
     {
-        ID3D12GraphicsCommandList_SetGraphicsRootSignature(post_cmdlist, state.d3d12.post_rootsig);
-        heaps: [] *ID3D12DescriptorHeap = .[state.d3d12.cbvsrvuav_heap];
+        ID3D12GraphicsCommandList_SetGraphicsRootSignature(post_cmdlist, post_rootsig);
+        heaps: [] *ID3D12DescriptorHeap = .[cbvsrvuav_heap];
         ID3D12GraphicsCommandList_SetDescriptorHeaps(post_cmdlist, xx heaps.count, xx heaps.data);
 
         {
             barriers : [] D3D12_RESOURCE_BARRIER = .[
-                D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(state.d3d12.render_targets[state.d3d12.ctx_current_frame_index], .COMMON, .RENDER_TARGET),
-                D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(state.d3d12.intermediate_rt, .RENDER_TARGET, .PIXEL_SHADER_RESOURCE),
+                D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(render_targets[ctx_current_frame_index], .COMMON, .RENDER_TARGET),
+                D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(intermediate_rt, .RENDER_TARGET, .PIXEL_SHADER_RESOURCE),
             ];
             ID3D12GraphicsCommandList_ResourceBarrier(post_cmdlist, xx barriers.count, xx barriers.data);
         }
@@ -739,8 +719,8 @@ backend_fini :: () {
     safe_release_and_reset(*scene_pipeline_state);
     safe_release_and_reset(*post\_pipeline_state);
 
-    safe_release_and_reset(*post_cmdlist);
     safe_release_and_reset(*scene_cmdlist);
+    safe_release_and_reset(*post_cmdlist);
 
     for post_cmdallocator {
         safe_release_and_reset(*it);
