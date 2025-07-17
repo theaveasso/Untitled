@@ -30,6 +30,8 @@ D3D12_CONTEXT :: struct {
     swapchain:          *IDXGISwapChain3;
     commandq:           *ID3D12CommandQueue;
     render_targets:     [..] *ID3D12Resource;
+    depth_buffers:      [..] *ID3D12Resource;
+
     intermediate_rt:    *ID3D12Resource;
     scene_cmdallocator: [..] *ID3D12CommandAllocator;
     post\_cmdallocator: [..] *ID3D12CommandAllocator;
@@ -41,10 +43,9 @@ D3D12_CONTEXT :: struct {
     scene_pipeline_state: *ID3D12PipelineState;
     post\_pipeline_state: *ID3D12PipelineState;
 
-    rtv_heap:           *ID3D12DescriptorHeap;
-    rtv_descriptor_size: u32;
-    cbvsrvuav_heap:     *ID3D12DescriptorHeap;
-    cbvsrvuav_descriptor_size: u32;
+    dsv_heap:            Descriptor_Heap;
+    rtv_heap:            Descriptor_Heap;
+    cbvsrvuav_heap:      Descriptor_Heap; 
 
     // app resource
     scene_vertex_buffer:        *ID3D12Resource;
@@ -85,6 +86,7 @@ backend_init :: (info: *Window_Info) -> bool {
 
     CheckInit();
     using state.d3d12;
+    success: bool;
 
     dxgi_factory_flags : u32 = 0;
     #if DEBUG {
@@ -163,20 +165,10 @@ backend_init :: (info: *Window_Info) -> bool {
     if tearing_support IDXGIFactory_MakeWindowAssociation(factory, info.hwnd, xx DXGI_MWA.NO_ALT_ENTER);
     ctx_current_frame_index = IDXGISwapChain3_GetCurrentBackBufferIndex(swapchain);
 
-    rtv_heap_desc: D3D12_DESCRIPTOR_HEAP_DESC;
-    rtv_heap_desc.NumDescriptors = ctx_buffer_count + 1; // +1 for the intermediate render target
-    rtv_heap_desc.Type           = .RTV;
-    rtv_heap_desc.Flags          = .NONE;
-    ok_or_exit(HR(ID3D12Device_CreateDescriptorHeap(device, *rtv_heap_desc, *uid(ID3D12DescriptorHeap_UUID), xx *rtv_heap)), "backend init: Failed to create D3D12DescriptorHeap!");
-    
-    cbvsrvuav_heap_desc: D3D12_DESCRIPTOR_HEAP_DESC;
-    cbvsrvuav_heap_desc.NumDescriptors = ctx_buffer_count * MAX_ENTITIES + 1; // +1 for the intermediate render target
-    cbvsrvuav_heap_desc.Type           = .CBV_SRV_UAV;
-    cbvsrvuav_heap_desc.Flags          = .SHADER_VISIBLE;
-    ok_or_exit(HR(ID3D12Device_CreateDescriptorHeap(device, *cbvsrvuav_heap_desc, *uid(ID3D12DescriptorHeap_UUID), xx *cbvsrvuav_heap)), "backend init: Failed to create D3D12DescriptorHeap!");
-
-    rtv_descriptor_size         = ID3D12Device_GetDescriptorHandleIncrementSize(device, .RTV);
-    cbvsrvuav_descriptor_size   = ID3D12Device_GetDescriptorHandleIncrementSize(device, .CBV_SRV_UAV);
+    success, rtv_heap       = make_descriptor_heap(.RTV, ctx_buffer_count + 1);
+    success, cbvsrvuav_heap = make_descriptor_heap(.CBV_SRV_UAV, ctx_buffer_count + 1, .SHADER_VISIBLE);
+    success, dsv_heap       = make_descriptor_heap(.DSV, ctx_buffer_count);
+    ok_or_exit(success);
 
     array_resize(*scene_cmdallocator, ctx_buffer_count);
     array_resize(*post\_cmdallocator, ctx_buffer_count);
@@ -434,15 +426,15 @@ load_assets :: () {
 
         base_buffer_location := ID3D12Resource_GetGPUVirtualAddress(scene_constant_buffer);
 
-        cpu_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(cbvsrvuav_heap);
-        cpu_handle.ptr += xx (1 * cbvsrvuav_descriptor_size);
+        cpu_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(cbvsrvuav_heap.heap);
+        cpu_handle.ptr += xx (1 * cbvsrvuav_heap.size);
         
         cbv_desc: D3D12_CONSTANT_BUFFER_VIEW_DESC;
         cbv_desc.SizeInBytes = xx CalculateConstantBufferByteSize(size_of(Scene_CBuffer));
         for i: 0..ctx_buffer_count - 1 {
             cbv_desc.BufferLocation = xx base_buffer_location + (i * xx CalculateConstantBufferByteSize(size_of(Scene_CBuffer)));
             ID3D12Device_CreateConstantBufferView(device, *cbv_desc, cpu_handle);
-            cpu_handle.ptr += xx (1 * cbvsrvuav_descriptor_size);
+            cpu_handle.ptr += xx (1 * cbvsrvuav_heap.size);
         }
 
         // map and initialize the constant buffer.
@@ -481,11 +473,11 @@ load_size_dependent_resource :: () {
     // create frame resource
     {
         array_resize(*render_targets, ctx_buffer_count);
-        rtv_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(state.d3d12.rtv_heap);
+        rtv_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(rtv_heap.heap);
         for i: 0..ctx_buffer_count - 1 {
             IDXGISwapChain_GetBuffer(swapchain, xx i, *uid(ID3D12Resource_UUID), xx *render_targets[i]);
             ID3D12Device_CreateRenderTargetView(device, render_targets[i], null, rtv_handle);
-            rtv_handle.ptr += xx (1 * rtv_descriptor_size);
+            rtv_handle.ptr += xx (1 * rtv_heap.size);
         }
     }
 }
@@ -493,49 +485,53 @@ load_size_dependent_resource :: () {
 load_scene_resolution_dependent_resource :: () {
     
     CheckInit();
-    current_width  := resolution_options[state.d3d12.current_resolution_index].width;
-    current_height := resolution_options[state.d3d12.current_resolution_index].height;
+    using state.d3d12;
+
+    current_width  := resolution_options[current_resolution_index].width;
+    current_height := resolution_options[current_resolution_index].height;
 
     // setup the scene viewport and scissoor rect to match the current scene rendering resolutioon
     {
-        state.d3d12.scene_viewport.Width  = xx current_width;
-        state.d3d12.scene_viewport.Height = xx current_height;
+        scene_viewport.Width  = xx current_width;
+        scene_viewport.Height = xx current_height;
         
-        state.d3d12.scene_scissor_rect.right  = xx current_width;
-        state.d3d12.scene_scissor_rect.bottom = xx current_height;
+        scene_scissor_rect.right  = xx current_width;
+        scene_scissor_rect.bottom = xx current_height;
     }
     
     // update post process viewport and scissor rect
     update_post_view_and_scissor();
 
     // create RTV for the intermediate render target
-    swapchain_desc: D3D12_RESOURCE_DESC = ID3D12Resource_GetDesc(state.d3d12.render_targets[state.d3d12.ctx_current_frame_index]); 
+    swapchain_desc: D3D12_RESOURCE_DESC = ID3D12Resource_GetDesc(render_targets[ctx_current_frame_index]); 
     {
         clear_value: D3D12_CLEAR_VALUE;
         clear_value.Format = swapchain_desc.Format;
         clear_value.Color  = .[0, 0, 0, 0];
         rt_desc := D3D12_RESOURCE_DESC_INIT_AS_TEXTURE2D(swapchain_desc.Format, xx current_width, xx current_height, 1, 1, swapchain_desc.SampleDesc.Count, swapchain_desc.SampleDesc.Quality, .ALLOW_RENDER_TARGET, .UNKNOWN, 0);
 
-        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(state.d3d12.device, *D3D12_HEAP_PROPERTIES_INIT(), .NONE, *rt_desc, .RENDER_TARGET, *clear_value, *uid(ID3D12Resource_UUID), xx *state.d3d12.intermediate_rt)), "load_size_dependent_resource: Failed to create CommittedResource!");
-        rtv_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(state.d3d12.rtv_heap);
-        rtv_handle.ptr += xx (state.d3d12.ctx_buffer_count * state.d3d12.rtv_descriptor_size);
-        ID3D12Device_CreateRenderTargetView(state.d3d12.device, state.d3d12.intermediate_rt, null, rtv_handle);
+        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(device, *D3D12_HEAP_PROPERTIES_INIT(), .NONE, *rt_desc, .RENDER_TARGET, *clear_value, *uid(ID3D12Resource_UUID), xx *intermediate_rt)), "load_size_dependent_resource: Failed to create CommittedResource!");
+        rtv_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(rtv_heap.heap);
+        rtv_handle.ptr += xx (ctx_buffer_count * rtv_heap.size);
+        ID3D12Device_CreateRenderTargetView(device, intermediate_rt, null, rtv_handle);
     }
 
-    srv_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(state.d3d12.cbvsrvuav_heap);
+    srv_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(cbvsrvuav_heap.heap);
     srv_desc: D3D12_SHADER_RESOURCE_VIEW_DESC;
     srv_desc.Format                  = swapchain_desc.Format;
     srv_desc.ViewDimension           = .TEXTURE2D;
     srv_desc.Shader4ComponentMapping = xx D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING();
     srv_desc.Texture2D.MipLevels     = 1;
-    ID3D12Device_CreateShaderResourceView(state.d3d12.device, state.d3d12.intermediate_rt, *srv_desc, srv_handle);
+    ID3D12Device_CreateShaderResourceView(device, intermediate_rt, *srv_desc, srv_handle);
 }
 
 update_post_view_and_scissor :: () {
 
     CheckInit();
-    view_width_ratio  := cast(float) (resolution_options[state.d3d12.current_resolution_index].width / xx state.current_window_info.window_width);
-    view_height_ratio := cast(float) (resolution_options[state.d3d12.current_resolution_index].height / xx state.current_window_info.window_height);
+    using state.d3d12;
+
+    view_width_ratio  := cast(float) (resolution_options[current_resolution_index].width / xx state.current_window_info.window_width);
+    view_height_ratio := cast(float) (resolution_options[current_resolution_index].height / xx state.current_window_info.window_height);
 
     x, y := 1.0;
     if view_width_ratio < view_height_ratio {
@@ -544,39 +540,43 @@ update_post_view_and_scissor :: () {
         y = view_height_ratio / view_width_ratio;
     }
 
-    state.d3d12.post_viewport.TopLeftX = state.current_window_info.window_width * (1.0 - x) / 2.0;
-    state.d3d12.post_viewport.TopLeftY = state.current_window_info.window_height * (1.0 - y) / 2.0;
-    state.d3d12.post_viewport.Width    = x * state.current_window_info.window_width;
-    state.d3d12.post_viewport.Height   = y * state.current_window_info.window_height;
+    post_viewport.TopLeftX = state.current_window_info.window_width * (1.0 - x) / 2.0;
+    post_viewport.TopLeftY = state.current_window_info.window_height * (1.0 - y) / 2.0;
+    post_viewport.Width    = x * state.current_window_info.window_width;
+    post_viewport.Height   = y * state.current_window_info.window_height;
 
-    state.d3d12.post_scissor_rect.left   = xx state.d3d12.post_viewport.TopLeftX;
-    state.d3d12.post_scissor_rect.right  = xx (state.d3d12.post_viewport.TopLeftX + state.d3d12.post_viewport.Width);
-    state.d3d12.post_scissor_rect.top    = xx state.d3d12.post_viewport.TopLeftY;
-    state.d3d12.post_scissor_rect.bottom = xx (state.d3d12.post_viewport.TopLeftY + state.d3d12.post_viewport.Height);
+    post_scissor_rect.left   = xx post_viewport.TopLeftX;
+    post_scissor_rect.right  = xx (post_viewport.TopLeftX + post_viewport.Width);
+    post_scissor_rect.top    = xx post_viewport.TopLeftY;
+    post_scissor_rect.bottom = xx (post_viewport.TopLeftY + post_viewport.Height);
 }
 
 wait_for_gpu :: () {
 
     CheckInit();
-    ok_or_exit(HR(ID3D12CommandQueue_Signal(state.d3d12.commandq, state.d3d12.fence, xx state.d3d12.fence_values[state.d3d12.ctx_current_frame_index])), "wait_for_gpu: Failed to signal command queue!");
-    ok_or_exit(HR(ID3D12Fence_SetEventOnCompletion(state.d3d12.fence, state.d3d12.fence_values[state.d3d12.ctx_current_frame_index], state.d3d12.fence_event)), "wait_for_gpu: Failed to set event on complete!");
-    WaitForSingleObject(state.d3d12.fence_event, INFINITE);
+    using state.d3d12;
 
-    state.d3d12.fence_values[state.d3d12.ctx_current_frame_index] += 1;
+    ok_or_exit(HR(ID3D12CommandQueue_Signal(commandq, fence, xx fence_values[ctx_current_frame_index])), "wait_for_gpu: Failed to signal command queue!");
+    ok_or_exit(HR(ID3D12Fence_SetEventOnCompletion(fence, fence_values[ctx_current_frame_index], fence_event)), "wait_for_gpu: Failed to set event on complete!");
+    WaitForSingleObject(fence_event, INFINITE);
+
+    fence_values[ctx_current_frame_index] += 1;
 }
 
 move_to_next_frame :: () {
 
     CheckInit();
-    current_fence_value := state.d3d12.fence_values[state.d3d12.ctx_current_frame_index];
-    ok_or_exit(HR(ID3D12CommandQueue_Signal(state.d3d12.commandq, state.d3d12.fence, xx current_fence_value)), "wait_for_gpu: Failed to signal command queue!");
+    using state.d3d12;
+
+    current_fence_value := fence_values[ctx_current_frame_index];
+    ok_or_exit(HR(ID3D12CommandQueue_Signal(commandq, fence, xx current_fence_value)), "wait_for_gpu: Failed to signal command queue!");
     
-    state.d3d12.ctx_current_frame_index = IDXGISwapChain3_GetCurrentBackBufferIndex(state.d3d12.swapchain);
-    if ID3D12Fence_GetCompletedValue(state.d3d12.fence) < state.d3d12.fence_values[state.d3d12.ctx_current_frame_index] {
-        ok_or_exit(HR(ID3D12Fence_SetEventOnCompletion(state.d3d12.fence, state.d3d12.fence_values[state.d3d12.ctx_current_frame_index], state.d3d12.fence_event)), "wait_for_gpu: Failed to set event on complete!");
-        WaitForSingleObject(state.d3d12.fence_event, INFINITE);
+    ctx_current_frame_index = IDXGISwapChain3_GetCurrentBackBufferIndex(swapchain);
+    if ID3D12Fence_GetCompletedValue(fence) < fence_values[ctx_current_frame_index] {
+        ok_or_exit(HR(ID3D12Fence_SetEventOnCompletion(fence, fence_values[ctx_current_frame_index], fence_event)), "wait_for_gpu: Failed to set event on complete!");
+        WaitForSingleObject(fence_event, INFINITE);
     }
-    state.d3d12.fence_values[state.d3d12.ctx_current_frame_index] = current_fence_value + 1;
+    fence_values[ctx_current_frame_index] = current_fence_value + 1;
 }
 
 backend_update :: () {
@@ -596,10 +596,12 @@ backend_update :: () {
 backend_render :: () {
 
     CheckInit();
+    using state.d3d12;
+
     backend_populate_commandlists();
-    cmdlists : [] *ID3D12CommandList = .[state.d3d12.scene_cmdlist, state.d3d12.post_cmdlist];
-    ID3D12CommandQueue_ExecuteCommandLists(state.d3d12.commandq, xx cmdlists.count, cmdlists.data);
-    ok_or_exit(HR(IDXGISwapChain_Present(state.d3d12.swapchain, 0, 0)));
+    cmdlists : [] *ID3D12CommandList = .[scene_cmdlist, post_cmdlist];
+    ID3D12CommandQueue_ExecuteCommandLists(commandq, xx cmdlists.count, cmdlists.data);
+    ok_or_exit(HR(IDXGISwapChain_Present(swapchain, 0, 0)));
     
     move_to_next_frame();
 }
@@ -618,17 +620,17 @@ backend_populate_commandlists :: () {
     // populate scene commandlist to render scene to intermediate render target
     {
         ID3D12GraphicsCommandList_SetGraphicsRootSignature(scene_cmdlist, scene_rootsig);
-        heaps: [] *ID3D12DescriptorHeap = .[cbvsrvuav_heap];
+        heaps: [] *ID3D12DescriptorHeap = .[cbvsrvuav_heap.heap];
         ID3D12GraphicsCommandList_SetDescriptorHeaps(scene_cmdlist, xx heaps.count, xx heaps.data);
 
-        cbv_handle := ID3D12DescriptorHeap_GetGPUDescriptorHandleForHeapStart(cbvsrvuav_heap);
-        cbv_handle.ptr += xx ((ctx_current_frame_index + 1) * cbvsrvuav_descriptor_size);
+        cbv_handle := ID3D12DescriptorHeap_GetGPUDescriptorHandleForHeapStart(cbvsrvuav_heap.heap);
+        cbv_handle.ptr += xx ((ctx_current_frame_index + 1) * cbvsrvuav_heap.size);
         ID3D12GraphicsCommandList_SetGraphicsRootDescriptorTable(scene_cmdlist, 0, cbv_handle);
         ID3D12GraphicsCommandList_RSSetViewports(scene_cmdlist, 1, *scene_viewport);
         ID3D12GraphicsCommandList_RSSetScissorRects(scene_cmdlist, 1, *scene_scissor_rect);
     
-        rtv_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(rtv_heap);
-        rtv_handle.ptr += xx (ctx_buffer_count * rtv_descriptor_size);
+        rtv_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(rtv_heap.heap);
+        rtv_handle.ptr += xx (ctx_buffer_count * rtv_heap.size);
         ID3D12GraphicsCommandList_OMSetRenderTargets(scene_cmdlist, 1, *rtv_handle, .FALSE, null);
 
         clear_color : [4] float = .[0, 0, 0, 0];
@@ -659,7 +661,7 @@ backend_populate_commandlists :: () {
 
     {
         ID3D12GraphicsCommandList_SetGraphicsRootSignature(post_cmdlist, post_rootsig);
-        heaps: [] *ID3D12DescriptorHeap = .[cbvsrvuav_heap];
+        heaps: [] *ID3D12DescriptorHeap = .[cbvsrvuav_heap.heap];
         ID3D12GraphicsCommandList_SetDescriptorHeaps(post_cmdlist, xx heaps.count, xx heaps.data);
 
         {
@@ -670,26 +672,26 @@ backend_populate_commandlists :: () {
             ID3D12GraphicsCommandList_ResourceBarrier(post_cmdlist, xx barriers.count, xx barriers.data);
         }
 
-        ID3D12GraphicsCommandList_SetGraphicsRootDescriptorTable(post_cmdlist, 0, ID3D12DescriptorHeap_GetGPUDescriptorHandleForHeapStart(state.d3d12.cbvsrvuav_heap));
+        ID3D12GraphicsCommandList_SetGraphicsRootDescriptorTable(post_cmdlist, 0, ID3D12DescriptorHeap_GetGPUDescriptorHandleForHeapStart(cbvsrvuav_heap.heap));
         ID3D12GraphicsCommandList_IASetPrimitiveTopology(post_cmdlist, .TRIANGLELIST);
-        ID3D12GraphicsCommandList_RSSetViewports(post_cmdlist, 1, *state.d3d12.post_viewport);
-        ID3D12GraphicsCommandList_RSSetScissorRects(post_cmdlist, 1, *state.d3d12.post_scissor_rect);
+        ID3D12GraphicsCommandList_RSSetViewports(post_cmdlist, 1, *post_viewport);
+        ID3D12GraphicsCommandList_RSSetScissorRects(post_cmdlist, 1, *post_scissor_rect);
 
-        rtv_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(state.d3d12.rtv_heap);
-        rtv_handle.ptr += xx (state.d3d12.ctx_current_frame_index * state.d3d12.rtv_descriptor_size);
+        rtv_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(rtv_heap.heap);
+        rtv_handle.ptr += xx (ctx_current_frame_index * rtv_heap.size);
         ID3D12GraphicsCommandList_OMSetRenderTargets(post_cmdlist, 1, *rtv_handle, .FALSE, null);
 
         clear_color : [4] float = .[0.2, 0.4, 0.6, 1.0];
         ID3D12GraphicsCommandList_ClearRenderTargetView(post_cmdlist, rtv_handle, *clear_color, 0, null);
         ID3D12GraphicsCommandList_IASetPrimitiveTopology(post_cmdlist, .TRIANGLESTRIP);
-        ID3D12GraphicsCommandList_IASetVertexBuffers(post_cmdlist, 0, 1, *state.d3d12.post_vertex_buffer_view);
+        ID3D12GraphicsCommandList_IASetVertexBuffers(post_cmdlist, 0, 1, *post_vertex_buffer_view);
 
         ID3D12GraphicsCommandList_DrawInstanced(post_cmdlist, 4, 1, 0, 0);
 
         {
             barriers : [] D3D12_RESOURCE_BARRIER = .[
-                D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(state.d3d12.render_targets[state.d3d12.ctx_current_frame_index], .RENDER_TARGET, .PRESENT),
-                D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(state.d3d12.intermediate_rt, .PIXEL_SHADER_RESOURCE, .RENDER_TARGET),
+                D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(render_targets[ctx_current_frame_index], .RENDER_TARGET, .PRESENT),
+                D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(intermediate_rt, .PIXEL_SHADER_RESOURCE, .RENDER_TARGET),
             ];
             ID3D12GraphicsCommandList_ResourceBarrier(post_cmdlist, xx barriers.count, xx barriers.data);
         }
@@ -711,8 +713,9 @@ backend_fini :: () {
     safe_release_and_reset(*scene_constant_buffer);
 
     // pipeline object
-    safe_release_and_reset(*rtv_heap);
-    safe_release_and_reset(*cbvsrvuav_heap);
+    deinit(*rtv_heap);
+    deinit(*cbvsrvuav_heap);
+    deinit(*dsv_heap);
 
     safe_release_and_reset(*scene_rootsig);
     safe_release_and_reset(*post\_rootsig);
