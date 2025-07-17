@@ -1,4 +1,5 @@
 Scene_CBuffer :: struct {
+    world:      Matrix4;
     transform:  Matrix4;
 }
 
@@ -340,10 +341,21 @@ load_assets :: () {
         x := quad_width  / 2.0;
         y := quad_height / 2.0;
         quadvertices : [] Scene_Vertex = .[
-            .{.{-0.5,  0.5, 1.0}, .{1.0, 0.0, 0.0, 1.0}},
-            .{.{ 0.5,  0.5, 1.0}, .{0.0, 1.0, 0.0, 1.0}},
-            .{.{ 0.5, -0.5, 1.0}, .{0.0, 0.0, 1.0, 1.0}},
-            .{.{-0.5, -0.5, 1.0}, .{0.0, 0.0, 1.0, 1.0}},
+            // .{.{-0.5,  0.5, 1.0}, .{1.0, 0.0, 0.0, 1.0}},
+            // .{.{ 0.5,  0.5, 1.0}, .{0.0, 1.0, 0.0, 1.0}},
+            // .{.{ 0.5, -0.5, 1.0}, .{0.0, 0.0, 1.0, 1.0}},
+            // .{.{-0.5, -0.5, 1.0}, .{0.0, 0.0, 1.0, 1.0}},
+            // Front face
+            .{.{-0.5, -0.5,  0.5}, .{1,0,0,1}},
+            .{.{ 0.5, -0.5,  0.5}, .{0,1,0,1}},
+            .{.{ 0.5,  0.5,  0.5}, .{0,0,1,1}},
+            .{.{-0.5,  0.5,  0.5}, .{1,1,1,1}},
+
+            // Back face
+            .{.{-0.5, -0.5, -0.5}, .{1,0,0,1}},
+            .{.{ 0.5, -0.5, -0.5}, .{0,1,0,1}},
+            .{.{ 0.5,  0.5, -0.5}, .{0,0,1,1}},
+            .{.{-0.5,  0.5, -0.5}, .{1,1,1,1}},
         ];
         vertex_buffer_size := size_of(Scene_Vertex) * quadvertices.count;
         vbuffer_desc := D3D12_RESOURCE_DESC_INIT_AS_BUFFER(xx vertex_buffer_size);
@@ -365,7 +377,21 @@ load_assets :: () {
         state.d3d12.scene_vertex_buffer_view.StrideInBytes  = size_of(Scene_Vertex);
         state.d3d12.scene_vertex_buffer_view.SizeInBytes    = xx vertex_buffer_size;
 
-        quadindices : [] u32 = .[0, 1, 2, 0, 2, 3];
+        quadindices : [] u32 = .[
+            // 0, 1, 2, 0, 2, 3
+            // Front face
+            0, 1, 2, 0, 2, 3,
+            // Right face
+            1, 5, 6, 1, 6, 2,
+            // Back face
+            5, 4, 7, 5, 7, 6,
+            // Left face
+            4, 0, 3, 4, 3, 7,
+            // Top face
+            3, 2, 6, 3, 6, 7,
+            // Bottom face
+            4, 5, 1, 4, 1, 0,
+        ];
         index_buffer_size := size_of(u32) * quadindices.count;
         ibuffer_desc := D3D12_RESOURCE_DESC_INIT_AS_BUFFER(xx index_buffer_size);
 
@@ -576,8 +602,17 @@ move_to_next_frame :: () {
 backend_update :: () {
 
     CheckInit();
+    t := seconds_since_init();
+
+    yaw:    Quaternion;
+    pitch:  Quaternion;
+    set_from_axis_and_angle(*yaw, .{0, 1, 0}, cast(float) t);
+    set_from_axis_and_angle(*pitch, .{1, 0, 0}, cast(float) t * 0.5);
+    world := rotation_matrix_lh(Matrix4, yaw * pitch);
+
     scene_cbuffer := state.d3d12.scene_cbuffer;
     scene_cbuffer.transform = transpose(state.camera.viewproj);
+    scene_cbuffer.world     = transpose(world);
 
     offset := state.d3d12.ctx_current_frame_index * CalculateConstantBufferByteSize(size_of(Scene_CBuffer));
     memcpy(state.d3d12.cbv_mapaddr + offset, *scene_cbuffer, size_of(Scene_CBuffer));
@@ -629,7 +664,7 @@ backend_populate_commandlists :: () {
         ID3D12GraphicsCommandList_IASetVertexBuffers(scene_cmdlist, 0, 1, *state.d3d12.scene_vertex_buffer_view);
         ID3D12GraphicsCommandList_IASetIndexBuffer(scene_cmdlist, *state.d3d12.scene_index_buffer_view);
 
-        ID3D12GraphicsCommandList_DrawIndexedInstanced(scene_cmdlist, 6, 1, 0, 0, 0);
+        ID3D12GraphicsCommandList_DrawIndexedInstanced(scene_cmdlist, 36, 1, 0, 0, 0);
     }
 
     ok_or_exit(HR(ID3D12GraphicsCommandList_Close(scene_cmdlist)), "backend_populate_commandlists: Failed to close D3D12GraphicsCommandList");

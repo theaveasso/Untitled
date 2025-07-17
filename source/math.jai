@@ -46,3 +46,41 @@ make_projection_matrix_lh :: (fov_vertical: float, aspect_ratio_horizontal_over_
 
     return ret;
 }
+
+rotation_matrix_lh :: ($T: Type, q: Quaternion) -> T {
+
+    ret: T;
+
+    #if T == Matrix4 ret._44 = 1;
+
+    xs := q.x * 2;
+    ys := q.y * 2;
+    zs := q.z * 2;
+
+    wx := q.w * xs;
+    wy := q.w * ys;
+    wz := q.w * zs;
+
+    _xx := q.x * xs;
+    xy  := q.x * ys;
+    xz  := q.x * zs;
+
+    yy := q.y * ys;
+    yz := q.y * zs;
+    zz := q.z * zs;
+
+    ret._11 = 1.0 - (yy + zz);
+    ret._12 = xy + wz;
+    ret._13 = xz - wy;
+
+    ret._21 = xy - wz;
+    ret._22 = 1.0 - (_xx + zz);
+    ret._23 = yz + wx;
+
+    ret._31 = xz + wy;
+    ret._32 = yz - wx;
+    ret._33 = 1.0 - (_xx + yy);
+
+    return ret;
+
+}

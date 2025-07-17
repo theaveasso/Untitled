@@ -28,7 +28,7 @@ main :: () {
     
     state.current_window_info = .{ hwnd=hwnd, window_width=window_width, window_height=window_height};
 
-    state.camera.viewpoint = .{0, 0, -1};
+    state.camera.viewpoint = .{0, 0, -2};
 
     ok_or_exit(backend_init(*state.current_window_info));
     load_assets();
