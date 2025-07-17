@@ -604,6 +604,14 @@ backend_update :: () {
     CheckInit();
     t := seconds_since_init();
 
+    if !Input.input_application_has_focus && state.control_camera set_camera_control(false);
+    if state.control_camera {
+        x, y, w, h := get_dimensions(state.current_window_info.hwnd, true);
+        set_mouse_pointer_position(w / 2, h / 2);
+    }
+
+    camera_update();
+
     yaw:    Quaternion;
     pitch:  Quaternion;
     set_from_axis_and_angle(*yaw, .{0, 1, 0}, cast(float) t);

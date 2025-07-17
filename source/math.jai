@@ -84,3 +84,15 @@ rotation_matrix_lh :: ($T: Type, q: Quaternion) -> T {
     return ret;
 
 }
+
+make_col_translation_matrix4 :: (v: Vector3) -> Matrix4 {
+
+    ret: Matrix4 = ---;
+    identity(*ret);
+
+    ret._41 = v.x;
+    ret._42 = v.y;
+    ret._43 = v.z;
+
+    return ret;
+}
