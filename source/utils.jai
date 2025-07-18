@@ -67,6 +67,93 @@ Compile_Shader :: (using _shader: *Shader, error: *ID3DBlob, file_name: string, 
     return true;
 }
 
+UpdateSubresource :: (
+    cmdlist:            *ID3D12GraphicsCommandList,
+    dest:               *ID3D12Resource,
+    intermediate:       *ID3D12Resource, 
+    first_subresource:  u64,
+    num_subresource:    u32,
+    required_size:      u64,
+    layouts:            *D3D12_PLACED_SUBRESOURCE_FOOTPRINT,
+    num_rows:           *u32,
+    row_sizes:          *u64, 
+    src_data:           *D3D12_SUBRESOURCE_DATA) -> u64 {
+
+    intermediate_desc := ID3D12Resource_GetDesc(intermediate);
+    destination\_desc := ID3D12Resource_GetDesc(dest);
+    if intermediate_desc.Dimension != .BUFFER return 0;
+    if intermediate_desc.Width < cast(u64) required_size + layouts[0].Offset return 0;
+    if (destination_desc.Dimension == .BUFFER && first_subresource != 0 || num_subresource != 1) return 0;
+
+    data: *u8;
+    ok := HR(ID3D12Resource_Map(intermediate, 0, null, xx *data));
+    if !ok return 0;
+
+    for i: 0..num_subresource - 1 {
+        layout := layouts[i];
+        dest_data: D3D12_MEMCPY_DEST;
+        dest_data.pData      = data + layout.Offset;
+        dest_data.RowPitch   = xx layout.Footprint.RowPitch;
+        dest_data.SlicePitch = xx layout.Footprint.RowPitch * num_rows[i];
+        memcpy_subresource(*dest_data, *src_data[i], xx row_sizes[i], num_rows[i], layout.Footprint.Depth);
+    }
+    ID3D12Resource_Unmap(intermediate, 0, null);
+
+    if destination_desc.Dimension == .BUFFER {
+        ID3D12GraphicsCommandList_CopyBufferRegion(cmdlist, dest, 0, intermediate, layouts[0].Offset, layouts[0].Footprint.Width);
+    } else {
+        for i: 0..num_subresource - 1 {
+            dst := UTD3D12_TEXTURE_COPY_LOCATION_INIT(dest, cast(u32) (i + first_subresource));
+            src := UTD3D12_TEXTURE_COPY_LOCATION_INIT(intermediate, layouts[i]);
+            ID3D12GraphicsCommandList_CopyTextureRegion(cmdlist, *dst, 0, 0, 0, *src, null);
+        }
+    }
+
+    return required_size;
+}
+
+// Heap allocating update subresource implementation
+update_subresource :: inline (
+    cmdlist:            *ID3D12GraphicsCommandList, 
+    dest:               *ID3D12Resource, 
+    intermediate:       *ID3D12Resource, 
+    intermediate_offset:s64,
+    first_subresource:  u64,
+    num_subresource:    u32,
+    src_data:           *D3D12_SUBRESOURCE_DATA) -> u64 {
+
+    required_size : u64 = 0;
+    mem_to_alloc  : s64 = cast(s64) ((size_of(D3D12_PLACED_SUBRESOURCE_FOOTPRINT) + size_of(u32) + size_of(u64)) * num_subresource);
+    if mem_to_alloc > SIZE_MAX return 0;
+
+    mem := alloc(mem_to_alloc); defer free(mem);
+    if mem == null return 0;
+
+    layouts  := cast(*D3D12_PLACED_SUBRESOURCE_FOOTPRINT) mem;
+    rowsizes := cast(*u64) (layouts + num_subresource);
+    numrows  := cast(*u32) (rowsizes + num_subresource);
+
+    destination_desc := ID3D12Resource_GetDesc(dest);
+    device : *ID3D12Device;
+    ok := HR(ID3D12DeviceChild_GetDevice(dest, *uid(ID3D12Device_UUID), xx *device)); defer safe_release_and_reset(*device);
+    ID3D12Device_GetCopyableFootprints(device, *destination_desc, xx first_subresource, num_subresource, xx intermediate_offset, layouts, numrows, rowsizes, *required_size);
+    if !ok return 0;
+
+    return UpdateSubresource(cmdlist, dest, intermediate, first_subresource, num_subresource, required_size, layouts, numrows, rowsizes, src_data);
+}
+
+memcpy_subresource :: (dest: *D3D12_MEMCPY_DEST, src: *D3D12_SUBRESOURCE_DATA, row_size: s64, num_rows: u32, num_slices: u32) {
+
+    for z: 0..num_slices - 1 {
+        dest_slice: *u8 = cast(*u8) dest.pData + dest.SlicePitch * z;
+        src_slice:  *u8 = cast(*u8) src.pData + src.SlicePitch * z;
+        for y: 0..num_rows - 1 {
+            memcpy(dest_slice + dest.RowPitch * y, src_slice + src.RowPitch * y, row_size);
+        }
+    }
+}
+
+
 print_debug_msgs :: (infoqueue: *ID3D12InfoQueue) {
     if !infoqueue return;
     msgs_count := ID3D12InfoQueue_GetNumStoredMessages(infoqueue);
