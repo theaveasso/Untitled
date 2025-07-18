@@ -276,11 +276,11 @@ load_assets :: () {
         pso_desc.BlendState             = D3D12_BLEND_DESC_INIT();
         pso_desc.SampleMask             = INFINITE;
         pso_desc.RasterizerState        = D3D12_RASTERIZER_DESC_INIT();
-        pso_desc.DepthStencilState      = D3D12_DEPTH_STENCIL_DESC_INIT();
+        pso_desc.DepthStencilState      = D3D12_DEPTH_STENCIL_DESC_INIT(true);
         pso_desc.PrimitiveTopologyType  = .TRIANGLE;
         pso_desc.NumRenderTargets       = 1; 
-        pso_desc.RTVFormats[0]          = DXGI_FORMAT.R8G8B8A8_UNORM;
-        pso_desc.DSVFormat              = DXGI_FORMAT.UNKNOWN;
+        pso_desc.RTVFormats[0]          = .R8G8B8A8_UNORM;
+        pso_desc.DSVFormat              = .D32_FLOAT;
         pso_desc.SampleDesc.Count       = 1;
 
         pso_desc.pRootSignature         = scene_rootsig;
@@ -291,6 +291,8 @@ load_assets :: () {
         ok_or_exit(HR(ID3D12Device_CreateGraphicsPipelineState(device, *pso_desc, *uid(ID3D12PipelineState_UUID), xx *scene_pipeline_state)), "load_assets: Failed to create D3D12GraphicsPipelineState!");
 
         pso_desc.pRootSignature         = post_rootsig;
+        pso_desc.DSVFormat              = .UNKNOWN;
+        pso_desc.DepthStencilState      = D3D12_DEPTH_STENCIL_DESC_INIT();
         pso_desc.VS                     = D3D12_SHADER_BYTECODE_INIT(post_vertex_shader.shader);
         pso_desc.PS                     = D3D12_SHADER_BYTECODE_INIT(post_pixel\_shader.shader);
         scale_elem_desc                 := shader_get_input_element(*post\_vertex_shader, .NON_SPLIT);
@@ -306,6 +308,7 @@ load_assets :: () {
     cmdlist: *ID3D12GraphicsCommandList;
     ok_or_exit(HR(ID3D12Device_CreateCommandList(device, 0, .DIRECT, cmdallocator, null,  *uid(ID3D12CommandList_UUID), xx *cmdlist)), "load_asset: Failed to create D3D12GraphicCommandList!");
     defer safe_release_and_reset(*cmdlist);
+
     
     // create the command lists
     {
@@ -523,6 +526,36 @@ load_scene_resolution_dependent_resource :: () {
     srv_desc.Shader4ComponentMapping = xx D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING();
     srv_desc.Texture2D.MipLevels     = 1;
     ID3D12Device_CreateShaderResourceView(device, intermediate_rt, *srv_desc, srv_handle);
+
+    // create DSV for the intermediate render target
+    {
+        dsv_desc: D3D12_DEPTH_STENCIL_VIEW_DESC;
+        dsv_desc.Format = .D32_FLOAT;
+        dsv_desc.ViewDimension = .TEXTURE2D;
+        dsv_desc.Flags    = .NONE;
+
+        depth_optimized_clear_value: D3D12_CLEAR_VALUE;
+        depth_optimized_clear_value.Format               = .D32_FLOAT;
+        depth_optimized_clear_value.DepthStencil.Depth   = 1.0;
+        depth_optimized_clear_value.DepthStencil.Stencil = 0;
+
+        array_resize(*depth_buffers, ctx_buffer_count);
+        dsv_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(dsv_heap.heap);
+        for *depth_buffers {
+            ok_or_exit(HR(ID3D12Device_CreateCommittedResource(
+                device, 
+                *D3D12_HEAP_PROPERTIES_INIT(),
+                .NONE,
+                *D3D12_RESOURCE_DESC_INIT_AS_TEXTURE2D(.D32_FLOAT, xx current_width, xx current_height, flags=.ALLOW_DEPTH_STENCIL),
+                .DEPTH_WRITE,
+                *depth_optimized_clear_value,
+                *uid(ID3D12Resource_UUID),
+                xx it)), "load_assets: Failed to create D3D12Resource!");
+
+            ID3D12Device_CreateDepthStencilView(device, it.*, *dsv_desc, dsv_handle);
+            dsv_handle.ptr += xx (1 * dsv_heap.size);
+        }
+    }
 }
 
 update_post_view_and_scissor :: () {
@@ -631,10 +664,15 @@ backend_populate_commandlists :: () {
     
         rtv_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(rtv_heap.heap);
         rtv_handle.ptr += xx (ctx_buffer_count * rtv_heap.size);
-        ID3D12GraphicsCommandList_OMSetRenderTargets(scene_cmdlist, 1, *rtv_handle, .FALSE, null);
+        dsv_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(dsv_heap.heap);
+        dsv_handle.ptr += xx (ctx_current_frame_index * dsv_heap.size);
+        ID3D12GraphicsCommandList_OMSetRenderTargets(scene_cmdlist, 1, *rtv_handle, .FALSE, *dsv_handle);
 
         clear_color : [4] float = .[0, 0, 0, 0];
         ID3D12GraphicsCommandList_ClearRenderTargetView(scene_cmdlist, rtv_handle, *clear_color, 0, null);
+
+        ID3D12GraphicsCommandList_ClearDepthStencilView(scene_cmdlist, dsv_handle, .DEPTH, 1.0, 0, 1, *scene_scissor_rect);
+
         ID3D12GraphicsCommandList_IASetPrimitiveTopology(scene_cmdlist, .TRIANGLELIST);
         ID3D12GraphicsCommandList_IASetVertexBuffers(scene_cmdlist, 0, 1, *scene_vertex_buffer_view);
         ID3D12GraphicsCommandList_IASetIndexBuffer(scene_cmdlist, *scene_index_buffer_view);
@@ -734,6 +772,9 @@ backend_fini :: () {
 
     safe_release_and_reset(*intermediate_rt);
     for render_targets {
+        safe_release_and_reset(*it);
+    }
+    for depth_buffers {
         safe_release_and_reset(*it);
     }
 

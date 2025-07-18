@@ -201,6 +201,8 @@ D3D12_DEPTH_STENCIL_DESC_INIT :: inline (
     depth_test: bool = false) -> D3D12_DEPTH_STENCIL_DESC {
     ret: D3D12_DEPTH_STENCIL_DESC;
     ret.DepthEnable     = ifx depth_test then .TRUE else .FALSE;
+    ret.DepthWriteMask  = ifx depth_test then .ALL else .ZERO;
+    ret.DepthFunc       = .LESS;
     ret.StencilEnable   = .FALSE;
     return ret;
 }
@@ -245,6 +247,31 @@ D3D12_RESOURCE_DESC_INIT_AS_TEXTURE2D :: inline (
     alignment: u32 = 0) -> D3D12_RESOURCE_DESC {
     ret: D3D12_RESOURCE_DESC;
     ret.Dimension           = .TEXTURE2D;
+    ret.Alignment           = alignment;
+    ret.Width               = xx width;
+    ret.Height              = xx height;
+    ret.DepthOrArraySize    = depth_or_array_size;
+    ret.MipLevels           = mip_level;
+    ret.Format              = format;
+    ret.SampleDesc.Count    = sample_count;
+    ret.SampleDesc.Quality  = sample_quality;
+    ret.Layout              = layout;
+    ret.Flags               = flags;
+    return ret;
+}
+D3D12_RESOURCE_DESC_INIT_AS_TEXTURE3D :: inline (
+    format: DXGI_FORMAT,
+    width: u64,
+    height: u64,
+    depth_or_array_size: u16 = 1,
+    mip_level: u16 = 0,
+    sample_count: u32 = 1,
+    sample_quality: u32 = 0,
+    flags: D3D12_RESOURCE_FLAGS = .NONE,
+    layout: D3D12_TEXTURE_LAYOUT = .UNKNOWN,
+    alignment: u32 = 0) -> D3D12_RESOURCE_DESC {
+    ret: D3D12_RESOURCE_DESC;
+    ret.Dimension           = .TEXTURE3D;
     ret.Alignment           = alignment;
     ret.Width               = xx width;
     ret.Height              = xx height;
