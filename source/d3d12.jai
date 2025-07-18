@@ -3,6 +3,12 @@ Scene_CBuffer :: struct {
     transform:  Matrix4;
 }
 
+CBV_SRV_UAV_HEAP_OFFSET :: enum {
+    RENDER_TARGET :: 0;
+    CBV           :: 1;
+    COUNT;
+}
+
 Window_Resolution :: struct {
     width:  u32;
     height: u32;
@@ -166,7 +172,7 @@ backend_init :: (info: *Window_Info) -> bool {
     ctx_current_frame_index = IDXGISwapChain3_GetCurrentBackBufferIndex(swapchain);
 
     success, rtv_heap       = make_descriptor_heap(.RTV, ctx_buffer_count + 1);
-    success, cbvsrvuav_heap = make_descriptor_heap(.CBV_SRV_UAV, ctx_buffer_count + 1, .SHADER_VISIBLE);
+    success, cbvsrvuav_heap = make_descriptor_heap(.CBV_SRV_UAV, xx CBV_SRV_UAV_HEAP_OFFSET.COUNT, .SHADER_VISIBLE);
     success, dsv_heap       = make_descriptor_heap(.DSV, ctx_buffer_count);
     ok_or_exit(success);
 
@@ -432,15 +438,12 @@ load_assets :: () {
         base_buffer_location := ID3D12Resource_GetGPUVirtualAddress(scene_constant_buffer);
 
         cpu_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(cbvsrvuav_heap.heap);
-        cpu_handle.ptr += xx (1 * cbvsrvuav_heap.size);
+        cpu_handle.ptr += xx (xx CBV_SRV_UAV_HEAP_OFFSET.CBV * cbvsrvuav_heap.size);
         
         cbv_desc: D3D12_CONSTANT_BUFFER_VIEW_DESC;
         cbv_desc.SizeInBytes = xx CalculateConstantBufferByteSize(size_of(Scene_CBuffer));
-        for i: 0..ctx_buffer_count - 1 {
-            cbv_desc.BufferLocation = xx base_buffer_location + (i * xx CalculateConstantBufferByteSize(size_of(Scene_CBuffer)));
-            ID3D12Device_CreateConstantBufferView(device, *cbv_desc, cpu_handle);
-            cpu_handle.ptr += xx (1 * cbvsrvuav_heap.size);
-        }
+        cbv_desc.BufferLocation = xx (base_buffer_location + xx CalculateConstantBufferByteSize(size_of(Scene_CBuffer)));
+        ID3D12Device_CreateConstantBufferView(device, *cbv_desc, cpu_handle);
 
         // map and initialize the constant buffer.
         // we don't unmap this until the app closes. keeping things mapped for the lifetime of the resource is okay
@@ -659,7 +662,7 @@ backend_populate_commandlists :: () {
         ID3D12GraphicsCommandList_SetDescriptorHeaps(scene_cmdlist, xx heaps.count, xx heaps.data);
 
         cbv_handle := ID3D12DescriptorHeap_GetGPUDescriptorHandleForHeapStart(cbvsrvuav_heap.heap);
-        cbv_handle.ptr += xx ((ctx_current_frame_index + 1) * cbvsrvuav_heap.size);
+        cbv_handle.ptr += xx (xx CBV_SRV_UAV_HEAP_OFFSET.CBV * cbvsrvuav_heap.size);
         ID3D12GraphicsCommandList_SetGraphicsRootDescriptorTable(scene_cmdlist, 0, cbv_handle);
         ID3D12GraphicsCommandList_RSSetViewports(scene_cmdlist, 1, *scene_viewport);
         ID3D12GraphicsCommandList_RSSetScissorRects(scene_cmdlist, 1, *scene_scissor_rect);
