@@ -1,3 +1,5 @@
+SIZE_MAX :: 0x4_0000;
+
 CalculateConstantBufferByteSize :: inline (bytesize: int) -> int { return (bytesize + 255) & ~255; }
 
 NAME_D3D12_OBJECT :: inline (object: *ID3D12Object, name: string) { ID3D12Object_SetName(object, xx name.data); }
@@ -103,8 +105,8 @@ UpdateSubresource :: (
         ID3D12GraphicsCommandList_CopyBufferRegion(cmdlist, dest, 0, intermediate, layouts[0].Offset, layouts[0].Footprint.Width);
     } else {
         for i: 0..num_subresource - 1 {
-            dst := UTD3D12_TEXTURE_COPY_LOCATION_INIT(dest, cast(u32) (i + first_subresource));
-            src := UTD3D12_TEXTURE_COPY_LOCATION_INIT(intermediate, layouts[i]);
+            dst := D3D12_TEXTURE_COPY_LOCATION_INIT(dest, cast(u32) (i + first_subresource));
+            src := D3D12_TEXTURE_COPY_LOCATION_INIT(intermediate, layouts[i]);
             ID3D12GraphicsCommandList_CopyTextureRegion(cmdlist, *dst, 0, 0, 0, *src, null);
         }
     }
@@ -152,7 +154,6 @@ memcpy_subresource :: (dest: *D3D12_MEMCPY_DEST, src: *D3D12_SUBRESOURCE_DATA, r
         }
     }
 }
-
 
 print_debug_msgs :: (infoqueue: *ID3D12InfoQueue) {
     if !infoqueue return;
@@ -212,6 +213,7 @@ D3D12_DESCRIPTOR_RANGE1_INIT :: inline (
     register_space: u32 = 0,
     flags: D3D12_DESCRIPTOR_RANGE_FLAGS = .NONE,
     offset_in_descriptors_from_table_start: u32 = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND) -> D3D12_DESCRIPTOR_RANGE1 {
+
     ret: D3D12_DESCRIPTOR_RANGE1;
     ret.RangeType            = type;
     ret.NumDescriptors       = num_descriptors;
@@ -221,29 +223,35 @@ D3D12_DESCRIPTOR_RANGE1_INIT :: inline (
     ret.OffsetInDescriptorsFromTableStart = offset_in_descriptors_from_table_start;
     return ret;
 }
+
 D3D12_ROOT_DESCRIPTOR_TABLE1_INIT :: inline (
     num_descriptor_range: u32,
     descriptor_range: *D3D12_DESCRIPTOR_RANGE1) -> D3D12_ROOT_DESCRIPTOR_TABLE1 {
+
     ret: D3D12_ROOT_DESCRIPTOR_TABLE1;
     ret.NumDescriptorRanges = num_descriptor_range;
     ret.pDescriptorRanges   = descriptor_range;
     return ret;
 }
+
 D3D12_ROOT_PARAMETER1_INIT_AS_DESCRIPTOR_TABLE :: inline (
     num_descriptor_range: u32,
     range: *D3D12_DESCRIPTOR_RANGE1,
     visibility: D3D12_SHADER_VISIBILITY = .ALL) -> D3D12_ROOT_PARAMETER1 {
+
     ret: D3D12_ROOT_PARAMETER1;
     ret.ParameterType    = .DESCRIPTOR_TABLE;
     ret.DescriptorTable  = D3D12_ROOT_DESCRIPTOR_TABLE1_INIT(num_descriptor_range, range);
     ret.ShaderVisibility = visibility;
     return ret;
 }
+
 D3D12_ROOT_PARAMETER1_INIT_AS_CONSTANTS :: inline (
     num_32_bit_values: u32,
     shader_register: u32,
     register_space:  u32 = 0,
     visibility: D3D12_SHADER_VISIBILITY = .ALL) -> D3D12_ROOT_PARAMETER1 {
+
     ret: D3D12_ROOT_PARAMETER1;
     ret.ParameterType            = ._32BIT_CONSTANTS;
     ret.Constants.ShaderRegister = shader_register;
@@ -252,6 +260,7 @@ D3D12_ROOT_PARAMETER1_INIT_AS_CONSTANTS :: inline (
     ret.ShaderVisibility         = visibility;
     return ret;
 }
+
 D3D12_SHADER_BYTECODE_INIT :: inline (
     shader: *ID3DBlob) -> D3D12_SHADER_BYTECODE {
     ret: D3D12_SHADER_BYTECODE;       
@@ -259,12 +268,13 @@ D3D12_SHADER_BYTECODE_INIT :: inline (
     ret.BytecodeLength  = ID3D10Blob_GetBufferSize(shader);
     return ret;
 }
+
 D3D12_BLEND_DESC_INIT :: inline (
 ) -> D3D12_BLEND_DESC {
+
     ret: D3D12_BLEND_DESC;
     ret.AlphaToCoverageEnable   = .FALSE;
     ret.IndependentBlendEnable  = .FALSE; 
-
     rtb_desc: D3D12_RENDER_TARGET_BLEND_DESC;
     rtb_desc.BlendEnable    = .FALSE;
     rtb_desc.LogicOpEnable  = .FALSE;
@@ -281,8 +291,10 @@ D3D12_BLEND_DESC_INIT :: inline (
     }
     return ret;
 }
+
 D3D12_RASTERIZER_DESC_INIT :: inline (
 ) -> D3D12_RASTERIZER_DESC {
+
     ret: D3D12_RASTERIZER_DESC;
     ret.FillMode                = .SOLID;
     ret.CullMode                = .BACK;
@@ -297,8 +309,10 @@ D3D12_RASTERIZER_DESC_INIT :: inline (
     ret.ConservativeRaster      = D3D12_CONSERVATIVE_RASTERIZATION_MODE.OFF;
     return ret;
 }
+
 D3D12_DEPTH_STENCIL_DESC_INIT :: inline (
     depth_test: bool = false) -> D3D12_DEPTH_STENCIL_DESC {
+
     ret: D3D12_DEPTH_STENCIL_DESC;
     ret.DepthEnable     = ifx depth_test then .TRUE else .FALSE;
     ret.DepthWriteMask  = ifx depth_test then .ALL else .ZERO;
@@ -306,8 +320,10 @@ D3D12_DEPTH_STENCIL_DESC_INIT :: inline (
     ret.StencilEnable   = .FALSE;
     return ret;
 }
+
 D3D12_HEAP_PROPERTIES_INIT :: inline (
     type: D3D12_HEAP_TYPE = .DEFAULT) -> D3D12_HEAP_PROPERTIES {
+
     ret: D3D12_HEAP_PROPERTIES;
     ret.Type                 = type;
     ret.CPUPageProperty      = .UNKNOWN;
@@ -316,10 +332,12 @@ D3D12_HEAP_PROPERTIES_INIT :: inline (
     ret.VisibleNodeMask      = 1;
     return ret;
 }
+
 D3D12_RESOURCE_DESC_INIT_AS_BUFFER :: inline (
     buffer_size: u64,
     flags: D3D12_RESOURCE_FLAGS = .NONE,
     alignment: u32 = 0) -> D3D12_RESOURCE_DESC {
+
     ret: D3D12_RESOURCE_DESC;
     ret.Dimension           = .BUFFER;
     ret.Alignment           = 0;
@@ -334,6 +352,7 @@ D3D12_RESOURCE_DESC_INIT_AS_BUFFER :: inline (
     ret.Flags               = flags;
     return ret;
 }
+
 D3D12_RESOURCE_DESC_INIT_AS_TEXTURE2D :: inline (
     format: DXGI_FORMAT,
     width: u64,
@@ -345,6 +364,7 @@ D3D12_RESOURCE_DESC_INIT_AS_TEXTURE2D :: inline (
     flags: D3D12_RESOURCE_FLAGS = .NONE,
     layout: D3D12_TEXTURE_LAYOUT = .UNKNOWN,
     alignment: u32 = 0) -> D3D12_RESOURCE_DESC {
+
     ret: D3D12_RESOURCE_DESC;
     ret.Dimension           = .TEXTURE2D;
     ret.Alignment           = alignment;
@@ -359,6 +379,7 @@ D3D12_RESOURCE_DESC_INIT_AS_TEXTURE2D :: inline (
     ret.Flags               = flags;
     return ret;
 }
+
 D3D12_RESOURCE_DESC_INIT_AS_TEXTURE3D :: inline (
     format: DXGI_FORMAT,
     width: u64,
@@ -370,6 +391,7 @@ D3D12_RESOURCE_DESC_INIT_AS_TEXTURE3D :: inline (
     flags: D3D12_RESOURCE_FLAGS = .NONE,
     layout: D3D12_TEXTURE_LAYOUT = .UNKNOWN,
     alignment: u32 = 0) -> D3D12_RESOURCE_DESC {
+
     ret: D3D12_RESOURCE_DESC;
     ret.Dimension           = .TEXTURE3D;
     ret.Alignment           = alignment;
@@ -384,12 +406,14 @@ D3D12_RESOURCE_DESC_INIT_AS_TEXTURE3D :: inline (
     ret.Flags               = flags;
     return ret;
 }
+
 D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION :: inline (
     resource: *ID3D12Resource, 
     state_before: D3D12_RESOURCE_STATES, 
     state_after: D3D12_RESOURCE_STATES,
     subresource:=D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
     flags : D3D12_RESOURCE_BARRIER_FLAGS = .NONE) -> D3D12_RESOURCE_BARRIER {
+
     ret: D3D12_RESOURCE_BARRIER;
     ret.Type    = .TRANSITION;
     ret.Flags   = flags;
@@ -397,5 +421,27 @@ D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION :: inline (
     ret.Transition.Subresource = xx subresource;
     ret.Transition.StateBefore = state_before;
     ret.Transition.StateAfter  = state_after;
+    return ret;
+}
+
+D3D12_TEXTURE_COPY_LOCATION_INIT :: inline (
+    resource: *ID3D12Resource,
+     footprint: D3D12_PLACED_SUBRESOURCE_FOOTPRINT) -> D3D12_TEXTURE_COPY_LOCATION {
+
+    ret: D3D12_TEXTURE_COPY_LOCATION;
+    ret.pResource  = resource;
+    ret.Type       = .PLACED_FOOTPRINT;
+    ret.PlacedFootprint = footprint;
+    return ret;
+}
+
+D3D12_TEXTURE_COPY_LOCATION_INIT :: inline (
+    resource: *ID3D12Resource, 
+    sub: u32) -> D3D12_TEXTURE_COPY_LOCATION {
+
+    ret: D3D12_TEXTURE_COPY_LOCATION;
+    ret.pResource          = resource;
+    ret.Type               = .SUBRESOURCE_INDEX;
+    ret.SubresourceIndex   = sub;
     return ret;
 }
