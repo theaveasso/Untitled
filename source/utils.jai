@@ -145,11 +145,24 @@ D3D12_ROOT_DESCRIPTOR_TABLE1_INIT :: inline (
 D3D12_ROOT_PARAMETER1_INIT_AS_DESCRIPTOR_TABLE :: inline (
     num_descriptor_range: u32,
     range: *D3D12_DESCRIPTOR_RANGE1,
-    visibility : D3D12_SHADER_VISIBILITY = .ALL) -> D3D12_ROOT_PARAMETER1 {
+    visibility: D3D12_SHADER_VISIBILITY = .ALL) -> D3D12_ROOT_PARAMETER1 {
     ret: D3D12_ROOT_PARAMETER1;
     ret.ParameterType    = .DESCRIPTOR_TABLE;
     ret.DescriptorTable  = D3D12_ROOT_DESCRIPTOR_TABLE1_INIT(num_descriptor_range, range);
     ret.ShaderVisibility = visibility;
+    return ret;
+}
+D3D12_ROOT_PARAMETER1_INIT_AS_CONSTANTS :: inline (
+    num_32_bit_values: u32,
+    shader_register: u32,
+    register_space:  u32 = 0,
+    visibility: D3D12_SHADER_VISIBILITY = .ALL) -> D3D12_ROOT_PARAMETER1 {
+    ret: D3D12_ROOT_PARAMETER1;
+    ret.ParameterType            = ._32BIT_CONSTANTS;
+    ret.Constants.ShaderRegister = shader_register;
+    ret.Constants.RegisterSpace  = register_space;
+    ret.Constants.Num32BitValues = num_32_bit_values;
+    ret.ShaderVisibility         = visibility;
     return ret;
 }
 D3D12_SHADER_BYTECODE_INIT :: inline (

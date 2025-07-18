@@ -264,6 +264,8 @@ load_assets :: () {
         scene_pixel\_shader: Shader;
         post\_vertex_shader: Shader;
         post\_pixel\_shader: Shader;
+        compute\    _shader: Shader;
+
         error: *ID3DBlob;
         result: HRESULT;
         
