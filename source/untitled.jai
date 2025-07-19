@@ -27,7 +27,7 @@ Untitled_State :: struct {
 
 #add_context untitled : *Untitled_State;
 
-MAX_ENTITIES :: 1000;
+MAX_ENTITIES :: 3;
 
 main :: () {
     CheckInit();
@@ -37,8 +37,12 @@ main :: () {
 
     state.camera.position = .{0, 0, 2};
 
-    e1 := Entity.{world=make_col_translation_matrix4(.{0, 0, 0})};
+    e1 := make_entity(position = .{0, 0, 0}, scale = xyz(0.5));
+    e2 := make_entity(.{0,  3, 3}, scale = xyz(0.3));
+    e3 := make_entity(.{0, -2, 0}, scale = xyz(0.6));
     array_add(*state.scene.entities, *e1);
+    array_add(*state.scene.entities, *e2);
+    array_add(*state.scene.entities, *e3);
 
     ok_or_exit(backend_init(*state.current_window_info));
     load_assets();
@@ -97,6 +101,7 @@ Input :: #import "Input";
 #load "mesh.jai";
 #load "material.jai";
 #load "scene.jai";
+#load "transform.jai";
 #load "d3d12/module.jai";
 
 is_key_down :: inline (key_code : Input.Key_Code) -> bool { return (Input.input_button_states[cast (s64) key_code] & .DOWN) != 0; }

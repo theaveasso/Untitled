@@ -1,11 +1,11 @@
 Scene_CBuffer :: struct {
-    world:      Matrix4;
     transform:  Matrix4;
 }
 
 CBV_SRV_UAV_HEAP_OFFSET :: enum {
     RENDER_TARGET :: 0;
     CBV           :: 1;
+    SRV           :: 2;
     COUNT;
 }
 
@@ -41,7 +41,7 @@ D3D12_CONTEXT :: struct {
     intermediate_rt:    *ID3D12Resource;
     scene_cmdallocator: [..] *ID3D12CommandAllocator;
     post\_cmdallocator: [..] *ID3D12CommandAllocator;
-    scene_cmdlist:      *ID3D12GraphicsCommandList;
+    scene_cmdlist:      Command_List;
     post\_cmdlist:      *ID3D12GraphicsCommandList;
 
     scene_rootsig:      *ID3D12RootSignature;
@@ -61,6 +61,8 @@ D3D12_CONTEXT :: struct {
     post\_vertex_buffer:        *ID3D12Resource;
     post\_vertex_buffer_view:   D3D12_VERTEX_BUFFER_VIEW;
     scene_constant_buffer:      *ID3D12Resource;
+
+    world_matrix_buffer: Buffer;
 
     cbv_mapaddr: *void;
     scene_cbuffer: Scene_CBuffer;
@@ -206,11 +208,13 @@ load_assets :: () {
 
     // Create a rootsig consisting of a desciptor table with a single CBV
     {
-        ranges : [1] D3D12_DESCRIPTOR_RANGE1;
-        root_parameters : [1] D3D12_ROOT_PARAMETER1;
+        ranges : [2] D3D12_DESCRIPTOR_RANGE1;
+        root_parameters : [2] D3D12_ROOT_PARAMETER1;
 
         ranges[0] = D3D12_DESCRIPTOR_RANGE1_INIT(.CBV, 1, 0, 0, .DATA_STATIC);
+        ranges[1] = D3D12_DESCRIPTOR_RANGE1_INIT(.SRV, 1, 0, 0, .DATA_VOLATILE);
         root_parameters[0] = D3D12_ROOT_PARAMETER1_INIT_AS_DESCRIPTOR_TABLE(1, *ranges[0], .VERTEX);
+        root_parameters[1] = D3D12_ROOT_PARAMETER1_INIT_AS_DESCRIPTOR_TABLE(1, *ranges[1], .VERTEX);
 
         rootsig_flags : D3D12_ROOT_SIGNATURE_FLAGS = .ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
         rootsig_desc : D3D12_VERSIONED_ROOT_SIGNATURE_DESC;
@@ -313,17 +317,17 @@ load_assets :: () {
     ok_or_exit(HR(ID3D12Device_CreateCommandAllocator(device, .DIRECT, *uid(ID3D12CommandAllocator_UUID), xx *cmdallocator)), "load_asset: Failed to create D3D12CommandAllocator!");
     defer safe_release_and_reset(*cmdallocator);
 
-    cmdlist: *ID3D12GraphicsCommandList;
-    ok_or_exit(HR(ID3D12Device_CreateCommandList(device, 0, .DIRECT, cmdallocator, null,  *uid(ID3D12CommandList_UUID), xx *cmdlist)), "load_asset: Failed to create D3D12GraphicCommandList!");
-    defer safe_release_and_reset(*cmdlist);
-
+    ok, cmdlist := make_command_list(cmdallocator, .DIRECT);
+    if !ok log_error("Failed create intermediate D3D12CommandList");
+    defer deinit(*cmdlist);
     
     // create the command lists
     {
-        ok_or_exit(HR(ID3D12Device_CreateCommandList(device, 0, .DIRECT, scene_cmdallocator[ctx_current_frame_index], null,  *uid(ID3D12CommandList_UUID), xx *scene_cmdlist)), "load_asset: Failed to create D3D12GraphicCommandList!");
+        // ok_or_exit(HR(ID3D12Device_CreateCommandList(device, 0, .DIRECT, scene_cmdallocator[ctx_current_frame_index], null,  *uid(ID3D12CommandList_UUID), xx *scene_cmdlist)), "load_asset: Failed to create D3D12GraphicCommandList!");
         ok_or_exit(HR(ID3D12Device_CreateCommandList(device, 0, .DIRECT, post\_cmdallocator[ctx_current_frame_index], null,  *uid(ID3D12CommandList_UUID), xx *post\_cmdlist)), "load_asset: Failed to create D3D12GraphicCommandList!");
 
-        ok_or_exit(HR(ID3D12GraphicsCommandList_Close(scene_cmdlist)), "load_assets: Failed to close D3D12GraphicsCommandList!");
+        ok:, scene_cmdlist = make_command_list(scene_cmdallocator[ctx_current_frame_index], .DIRECT);
+        command_list_close(*scene_cmdlist);
         ok_or_exit(HR(ID3D12GraphicsCommandList_Close(post_cmdlist)), "load_assets: Failed to close D3D12GraphicsCommandList!");
     }
 
@@ -359,9 +363,9 @@ load_assets :: () {
         memcpy(cpu_mapaddr, xx quadvertices.data, xx vertex_buffer_size);
         ID3D12Resource_Unmap(scene_vertex_upload_buffer, 0, null);
         
-        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(scene_vertex_buffer, .COMMON, .COPY_DEST));
-        ID3D12GraphicsCommandList_CopyBufferRegion(cmdlist, scene_vertex_buffer, 0, scene_vertex_upload_buffer, 0, xx vertex_buffer_size);
-        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(scene_vertex_buffer, .COPY_DEST, .VERTEX_AND_CONSTANT_BUFFER));
+        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(scene_vertex_buffer, .COMMON, .COPY_DEST));
+        ID3D12GraphicsCommandList_CopyBufferRegion(cmdlist.cmdlist, scene_vertex_buffer, 0, scene_vertex_upload_buffer, 0, xx vertex_buffer_size);
+        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(scene_vertex_buffer, .COPY_DEST, .VERTEX_AND_CONSTANT_BUFFER));
         
         scene_vertex_buffer_view.BufferLocation = ID3D12Resource_GetGPUVirtualAddress(scene_vertex_buffer);
         scene_vertex_buffer_view.StrideInBytes  = size_of(Scene_Vertex);
@@ -387,9 +391,9 @@ load_assets :: () {
         memcpy(icpu_mapaddr, xx quadindices.data, xx index_buffer_size);
         ID3D12Resource_Unmap(scene_index_upload_buffer, 0, null);
 
-        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(scene_index_buffer, .COMMON, .COPY_DEST));
-        ID3D12GraphicsCommandList_CopyBufferRegion(cmdlist, scene_index_buffer, 0, scene_index_upload_buffer, 0, xx index_buffer_size);
-        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(scene_index_buffer, .COPY_DEST, .INDEX_BUFFER));
+        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(scene_index_buffer, .COMMON, .COPY_DEST));
+        ID3D12GraphicsCommandList_CopyBufferRegion(cmdlist.cmdlist, scene_index_buffer, 0, scene_index_upload_buffer, 0, xx index_buffer_size);
+        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(scene_index_buffer, .COPY_DEST, .INDEX_BUFFER));
 
         scene_index_buffer_view.BufferLocation = ID3D12Resource_GetGPUVirtualAddress(scene_index_buffer);
         scene_index_buffer_view.SizeInBytes    = xx index_buffer_size;
@@ -418,9 +422,9 @@ load_assets :: () {
         memcpy(cpu_mapaddr, xx quadvertices.data, xx vertex_buffer_size);
         ID3D12Resource_Unmap(post_vertex_upload_buffer, 0, null);
         
-        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(post_vertex_buffer, .COMMON, .COPY_DEST));
-        ID3D12GraphicsCommandList_CopyBufferRegion(cmdlist, post_vertex_buffer, 0, post_vertex_upload_buffer, 0, xx vertex_buffer_size);
-        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(post_vertex_buffer, .COPY_DEST, .VERTEX_AND_CONSTANT_BUFFER));
+        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(post_vertex_buffer, .COMMON, .COPY_DEST));
+        ID3D12GraphicsCommandList_CopyBufferRegion(cmdlist.cmdlist, post_vertex_buffer, 0, post_vertex_upload_buffer, 0, xx vertex_buffer_size);
+        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(post_vertex_buffer, .COPY_DEST, .VERTEX_AND_CONSTANT_BUFFER));
         
         post_vertex_buffer_view.BufferLocation = ID3D12Resource_GetGPUVirtualAddress(post_vertex_buffer);
         post_vertex_buffer_view.StrideInBytes  = size_of(Post_Vertex);
@@ -452,10 +456,22 @@ load_assets :: () {
         memcpy(cbv_mapaddr, *scene_cbuffer, size_of(Scene_CBuffer));
     }
 
+    {
+        success:, world_matrix_buffer = make_structured_buffer(*cbvsrvuav_heap, xx size_of(Matrix4), MAX_ENTITIES);
+        world_matrices: [..] Matrix4;
+        for state.scene.entities {
+            array_add(*world_matrices, transpose(it.local_transform.world));
+        }
+
+        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(world_matrix_buffer.resource, .COMMON, .COPY_DEST));
+        commandlist_upload_buffer_data(*cmdlist, *world_matrix_buffer, world_matrices.data, xx world_matrices.count * size_of(Matrix4));
+        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(world_matrix_buffer.resource, .COPY_DEST, .GENERIC_READ));
+    }
+
     // close the resource creation command list and execute it to begin the vbuffer copy into the default heap
-    ID3D12GraphicsCommandList_Close(cmdlist);
-    cmdlists : [] *ID3D12CommandList = .[cmdlist];
-    ID3D12CommandQueue_ExecuteCommandLists(commandq, xx cmdlists.count, cmdlists.data);
+    command_list_close(*cmdlist);
+    cmdlists : [] *ID3D12CommandList = .[cmdlist.cmdlist];
+    command_list_execute(commandq, cmdlists.count, cmdlists.data);
 
     array_resize(*fence_values, ctx_buffer_count);
     {
@@ -620,6 +636,8 @@ move_to_next_frame :: () {
 backend_update :: () {
 
     CheckInit();
+    wait_for_gpu();
+
     t := seconds_since_init();
 
     if !Input.input_application_has_focus && state.control_camera set_camera_control(false);
@@ -637,7 +655,7 @@ backend_render :: () {
     using state.d3d12;
 
     backend_populate_commandlists();
-    cmdlists : [] *ID3D12CommandList = .[scene_cmdlist, post_cmdlist];
+    cmdlists : [] *ID3D12CommandList = .[scene_cmdlist.cmdlist, post_cmdlist];
     ID3D12CommandQueue_ExecuteCommandLists(commandq, xx cmdlists.count, cmdlists.data);
     ok_or_exit(HR(IDXGISwapChain_Present(swapchain, 0, 0)));
     
@@ -649,59 +667,68 @@ backend_populate_commandlists :: () {
     CheckInit();
     using state.d3d12;
     
-    ok_or_exit(HR(ID3D12CommandAllocator_Reset(scene_cmdallocator[ctx_current_frame_index])), "backend_populate_commandlists: Failed to reset D3D12CommandAllocator!");
     ok_or_exit(HR(ID3D12CommandAllocator_Reset(post_cmdallocator[ctx_current_frame_index])), "backend_populate_commandlists: Failed to reset D3D12CommandAllocator!");
-    
-    ok_or_exit(HR(ID3D12GraphicsCommandList_Reset(scene_cmdlist, scene_cmdallocator[ctx_current_frame_index], scene_pipeline_state)), "backend_populate_commandlists: Failed to reset D3D12CommandList!");
     ok_or_exit(HR(ID3D12GraphicsCommandList_Reset(post_cmdlist, post_cmdallocator[ctx_current_frame_index], post_pipeline_state)), "backend_populate_commandlists: Failed to reset D3D12CommandList!");
+
+    command_list_reset_w_allocator(*scene_cmdlist, scene_pipeline_state);
     
     // populate scene commandlist to render scene to intermediate render target
     {
-        ID3D12GraphicsCommandList_SetGraphicsRootSignature(scene_cmdlist, scene_rootsig);
+        ID3D12GraphicsCommandList_SetGraphicsRootSignature(scene_cmdlist.cmdlist, scene_rootsig);
         heaps: [] *ID3D12DescriptorHeap = .[cbvsrvuav_heap.heap];
-        ID3D12GraphicsCommandList_SetDescriptorHeaps(scene_cmdlist, xx heaps.count, xx heaps.data);
+        ID3D12GraphicsCommandList_SetDescriptorHeaps(scene_cmdlist.cmdlist, xx heaps.count, xx heaps.data);
 
         cbv_handle := ID3D12DescriptorHeap_GetGPUDescriptorHandleForHeapStart(cbvsrvuav_heap.heap);
         cbv_handle.ptr += xx (xx CBV_SRV_UAV_HEAP_OFFSET.CBV * cbvsrvuav_heap.size);
-        ID3D12GraphicsCommandList_SetGraphicsRootDescriptorTable(scene_cmdlist, 0, cbv_handle);
-        ID3D12GraphicsCommandList_RSSetViewports(scene_cmdlist, 1, *scene_viewport);
-        ID3D12GraphicsCommandList_RSSetScissorRects(scene_cmdlist, 1, *scene_scissor_rect);
+        ID3D12GraphicsCommandList_SetGraphicsRootDescriptorTable(scene_cmdlist.cmdlist, 0, cbv_handle);
+
+        ID3D12GraphicsCommandList_SetGraphicsRootDescriptorTable(scene_cmdlist.cmdlist, 1, world_matrix_buffer.srv.gpu);
+
+        ID3D12GraphicsCommandList_RSSetViewports(scene_cmdlist.cmdlist, 1, *scene_viewport);
+        ID3D12GraphicsCommandList_RSSetScissorRects(scene_cmdlist.cmdlist, 1, *scene_scissor_rect);
     
         rtv_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(rtv_heap.heap);
         rtv_handle.ptr += xx (ctx_buffer_count * rtv_heap.size);
         dsv_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(dsv_heap.heap);
         dsv_handle.ptr += xx (ctx_current_frame_index * dsv_heap.size);
-        ID3D12GraphicsCommandList_OMSetRenderTargets(scene_cmdlist, 1, *rtv_handle, .FALSE, *dsv_handle);
+        ID3D12GraphicsCommandList_OMSetRenderTargets(scene_cmdlist.cmdlist, 1, *rtv_handle, .FALSE, *dsv_handle);
 
         clear_color : [4] float = .[0, 0, 0, 0];
-        ID3D12GraphicsCommandList_ClearRenderTargetView(scene_cmdlist, rtv_handle, *clear_color, 0, null);
+        ID3D12GraphicsCommandList_ClearRenderTargetView(scene_cmdlist.cmdlist, rtv_handle, *clear_color, 0, null);
 
-        ID3D12GraphicsCommandList_ClearDepthStencilView(scene_cmdlist, dsv_handle, .DEPTH, 1.0, 0, 1, *scene_scissor_rect);
+        ID3D12GraphicsCommandList_ClearDepthStencilView(scene_cmdlist.cmdlist, dsv_handle, .DEPTH, 1.0, 0, 1, *scene_scissor_rect);
 
-        ID3D12GraphicsCommandList_IASetPrimitiveTopology(scene_cmdlist, .TRIANGLELIST);
-        ID3D12GraphicsCommandList_IASetVertexBuffers(scene_cmdlist, 0, 1, *scene_vertex_buffer_view);
-        ID3D12GraphicsCommandList_IASetIndexBuffer(scene_cmdlist, *scene_index_buffer_view);
+        ID3D12GraphicsCommandList_IASetPrimitiveTopology(scene_cmdlist.cmdlist, .TRIANGLELIST);
+        ID3D12GraphicsCommandList_IASetVertexBuffers(scene_cmdlist.cmdlist, 0, 1, *scene_vertex_buffer_view);
+        ID3D12GraphicsCommandList_IASetIndexBuffer(scene_cmdlist.cmdlist, *scene_index_buffer_view);
 
+        cbuffer : Scene_CBuffer = .{transform = transpose(state.camera.viewproj)};
+
+        offset := ctx_current_frame_index * CalculateConstantBufferByteSize(size_of(Scene_CBuffer));
+        memcpy(cbv_mapaddr + offset, *cbuffer, size_of(Scene_CBuffer));
+
+        world_matrices: [..] Matrix4;
         for state.scene.entities {
+            yaw : Quaternion;
+            pitch: Quaternion;
+            set_from_axis_and_angle(*yaw, .{0, 1, 0}, state.deltatime * 2);
+            set_from_axis_and_angle(*pitch, .{1, 0, 0}, state.deltatime * 5);
 
-            yaw:    Quaternion;
-            pitch:  Quaternion;
-            set_from_axis_and_angle(*yaw, .{0, 1, 0}, cast(float) state.deltatime);
-            set_from_axis_and_angle(*pitch, .{1, 0, 0}, cast(float) state.deltatime * 0.5);
+            delta := normalize(yaw * pitch);
+            it.local_transform.rotation = normalize(delta * it.local_transform.rotation);
 
-            it.world = rotation_matrix_lh(Matrix4, yaw * pitch) * it.world;
-
-            cbuffer : Scene_CBuffer = .{world = transpose(it.world), transform = transpose(state.camera.viewproj)};
-
-            offset := ctx_current_frame_index * CalculateConstantBufferByteSize(size_of(Scene_CBuffer));
-            memcpy(cbv_mapaddr + offset, *cbuffer, size_of(Scene_CBuffer));
-            ID3D12GraphicsCommandList_DrawIndexedInstanced(scene_cmdlist, 36, 1, 0, 0, 0);
+            world := make_world_matrix(*it.local_transform);
+            array_add(*world_matrices, transpose(world));
         }
 
+        ID3D12GraphicsCommandList_ResourceBarrier(scene_cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(world_matrix_buffer.resource, .COMMON, .COPY_DEST));
+        commandlist_upload_buffer_data(*scene_cmdlist, *world_matrix_buffer, world_matrices.data, xx world_matrices.count * size_of(Matrix4));
+        ID3D12GraphicsCommandList_ResourceBarrier(scene_cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(world_matrix_buffer.resource, .COPY_DEST, .GENERIC_READ));
+
+        ID3D12GraphicsCommandList_DrawIndexedInstanced(scene_cmdlist.cmdlist, 36, xx state.scene.entities.count, 0, 0, 0);
     }
 
-    ok_or_exit(HR(ID3D12GraphicsCommandList_Close(scene_cmdlist)), "backend_populate_commandlists: Failed to close D3D12GraphicsCommandList");
-
+    command_list_close(*scene_cmdlist);
     {
         ID3D12GraphicsCommandList_SetGraphicsRootSignature(post_cmdlist, post_rootsig);
         heaps: [] *ID3D12DescriptorHeap = .[cbvsrvuav_heap.heap];
@@ -754,6 +781,7 @@ backend_fini :: () {
     safe_release_and_reset(*scene_index\_buffer);
     safe_release_and_reset(*post_vertex\_buffer);
     safe_release_and_reset(*scene_constant_buffer);
+    deinit(*world_matrix_buffer);
 
     // pipeline object
     deinit(*rtv_heap);
@@ -765,7 +793,7 @@ backend_fini :: () {
     safe_release_and_reset(*scene_pipeline_state);
     safe_release_and_reset(*post\_pipeline_state);
 
-    safe_release_and_reset(*scene_cmdlist);
+    deinit(*scene_cmdlist);
     safe_release_and_reset(*post_cmdlist);
 
     for post_cmdallocator {
