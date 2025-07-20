@@ -90,12 +90,15 @@ per_thread_init :: inline () {
 #import "d3d_compiler";
 #import "dxgi";
 #import "Compiler";
+#import "stb_image";
 
 Input :: #import "Input";
 
+#load "bitmap.jai";
 #load "d3d12.jai";
 #load "utils.jai";
 #load "camera.jai";
+#load "skybox.jai";
 #load "math.jai";
 #load "entity.jai";
 #load "mesh.jai";

@@ -3,6 +3,7 @@
 #load "command_queue.jai";
 #load "descriptor_heap.jai";
 #load "shader.jai";
+#load "texture.jai";
 
 Descriptor_Handle :: struct {
     cpu: D3D12_CPU_DESCRIPTOR_HANDLE;

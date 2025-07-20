@@ -1,5 +1,50 @@
 SIZE_MAX :: 0x4_0000;
 
+GetImageBytesPerTexel :: inline (tf: DXGI_FORMAT) -> int {
+
+   using DXGI_FORMAT;
+
+    if tf == {
+        case R8_TYPELESS;           #through;
+        case R8G8_SINT;             #through;
+        case R16_FLOAT;             #through;
+        case D16_UNORM;             return 2;
+        case R8G8B8A8_TYPELESS;     #through;
+        case R8G8B8A8_UNORM;        #through;
+        case R8G8B8A8_UNORM_SRGB;   #through;
+        case R8G8B8A8_UINT;         #through;
+        case R8G8B8A8_SNORM;        #through;
+        case R8G8B8A8_SINT;         #through;
+        case R16G16_TYPELESS;       #through;
+        case R16G16_FLOAT;          #through;
+        case R16G16_UNORM;          #through;
+        case R16G16_UINT;           #through;
+        case R16G16_SNORM;          #through;
+        case R16G16_SINT;           #through;
+        case R32_TYPELESS;          #through;
+        case D32_FLOAT;             return 4;
+        case R16G16B16A16_TYPELESS; #through;
+        case R16G16B16A16_FLOAT;    #through;
+        case R16G16B16A16_UNORM;    #through;
+        case R16G16B16A16_SNORM;    #through;
+        case R16G16B16A16_SINT;     #through;
+        case R32G32_TYPELESS;       #through;
+        case R32G32_FLOAT;          #through;
+        case R32G32_UINT;           #through;
+        case R32G32_SINT;           return 8;
+        case R32G32B32_UINT;        #through;
+        case R32G32B32_SINT;        return 12;
+        case R32G32B32A32_TYPELESS; #through;
+        case R32G32B32A32_FLOAT;    #through;
+        case R32G32B32A32_UINT;     #through;
+        case R32G32B32A32_SINT;     #through;
+        case R32G32B32_TYPELESS;    #through;
+        case R32G32B32_FLOAT;       return 16;
+    }
+
+    return 0;
+}
+
 CalculateConstantBufferByteSize :: inline (bytesize: int) -> int { return (bytesize + 255) & ~255; }
 
 NAME_D3D12_OBJECT :: inline (object: *ID3D12Object, name: string) { ID3D12Object_SetName(object, xx name.data); }
@@ -115,7 +160,7 @@ UpdateSubresource :: (
 }
 
 // Heap allocating update subresource implementation
-update_subresource :: inline (
+UpdateSubresource :: inline (
     cmdlist:            *ID3D12GraphicsCommandList, 
     dest:               *ID3D12Resource, 
     intermediate:       *ID3D12Resource, 
@@ -358,7 +403,7 @@ D3D12_RESOURCE_DESC_INIT_AS_TEXTURE2D :: inline (
     width: u64,
     height: u64,
     depth_or_array_size: u16 = 1,
-    mip_level: u16 = 0,
+    mip_level: u16 = 1,
     sample_count: u32 = 1,
     sample_quality: u32 = 0,
     flags: D3D12_RESOURCE_FLAGS = .NONE,

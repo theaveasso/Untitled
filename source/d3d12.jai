@@ -6,6 +6,7 @@ CBV_SRV_UAV_HEAP_OFFSET :: enum {
     RENDER_TARGET :: 0;
     CBV           :: 1;
     SRV           :: 2;
+    TEXTURE_SRV   :: 3;
     COUNT;
 }
 
@@ -16,7 +17,7 @@ Window_Resolution :: struct {
 
 Scene_Vertex :: struct {
     position:   Vector3;
-    color:      Vector4;
+    uv:         Vector2;
 }
 
 Post_Vertex ::  struct {
@@ -61,6 +62,7 @@ D3D12_CONTEXT :: struct {
     post\_vertex_buffer:        *ID3D12Resource;
     post\_vertex_buffer_view:   D3D12_VERTEX_BUFFER_VIEW;
     scene_constant_buffer:      *ID3D12Resource;
+    texture:                    Texture;
 
     world_matrix_buffer: Buffer;
 
@@ -208,21 +210,37 @@ load_assets :: () {
 
     // Create a rootsig consisting of a desciptor table with a single CBV
     {
-        ranges : [2] D3D12_DESCRIPTOR_RANGE1;
-        root_parameters : [2] D3D12_ROOT_PARAMETER1;
+        ranges : [3] D3D12_DESCRIPTOR_RANGE1;
+        root_parameters : [3] D3D12_ROOT_PARAMETER1;
 
         ranges[0] = D3D12_DESCRIPTOR_RANGE1_INIT(.CBV, 1, 0, 0, .DATA_STATIC);
         ranges[1] = D3D12_DESCRIPTOR_RANGE1_INIT(.SRV, 1, 0, 0, .DATA_VOLATILE);
+        ranges[2] = D3D12_DESCRIPTOR_RANGE1_INIT(.SRV, 1, 1, 0, .DATA_STATIC);
         root_parameters[0] = D3D12_ROOT_PARAMETER1_INIT_AS_DESCRIPTOR_TABLE(1, *ranges[0], .VERTEX);
         root_parameters[1] = D3D12_ROOT_PARAMETER1_INIT_AS_DESCRIPTOR_TABLE(1, *ranges[1], .VERTEX);
+        root_parameters[2] = D3D12_ROOT_PARAMETER1_INIT_AS_DESCRIPTOR_TABLE(1, *ranges[2], .PIXEL);
+
+        sampler: D3D12_STATIC_SAMPLER_DESC;
+        sampler.Filter          = .MIN_MAG_POINT_MIP_LINEAR;
+        sampler.AddressU        = .BORDER;
+        sampler.AddressV        = .BORDER;
+        sampler.AddressW        = .BORDER;
+        sampler.MipLODBias      = 0;
+        sampler.MaxAnisotropy   = 0;
+        sampler.ComparisonFunc  = .NEVER;
+        sampler.MinLOD          = 0;
+        sampler.MaxLOD          = 0;
+        sampler.ShaderRegister  = 0;
+        sampler.RegisterSpace   = 0;
+        sampler.ShaderVisibility= .PIXEL;
 
         rootsig_flags : D3D12_ROOT_SIGNATURE_FLAGS = .ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
         rootsig_desc : D3D12_VERSIONED_ROOT_SIGNATURE_DESC;
         rootsig_desc.Version = ._1_1;
         rootsig_desc.Desc_1_1.NumParameters      = xx root_parameters.count;
         rootsig_desc.Desc_1_1.pParameters        = root_parameters.data;
-        rootsig_desc.Desc_1_1.NumStaticSamplers  = 0;
-        rootsig_desc.Desc_1_1.pStaticSamplers    = null;
+        rootsig_desc.Desc_1_1.NumStaticSamplers  = 1;
+        rootsig_desc.Desc_1_1.pStaticSamplers    = *sampler;
         rootsig_desc.Desc_1_1.Flags              = rootsig_flags;
 
         signature:  *ID3DBlob;
@@ -341,15 +359,50 @@ load_assets :: () {
         x := quad_width  / 2.0;
         y := quad_height / 2.0;
         quadvertices : [] Scene_Vertex = .[
-            .{.{-0.5, -0.5,  0.5}, .{1,0,0,1}},
-            .{.{ 0.5, -0.5,  0.5}, .{0,1,0,1}},
-            .{.{ 0.5,  0.5,  0.5}, .{0,0,1,1}},
-            .{.{-0.5,  0.5,  0.5}, .{1,1,1,1}},
+            // .{.{-0.5, -0.5,  0.5}, .{1,0,0,1}},
+            // .{.{ 0.5, -0.5,  0.5}, .{0,1,0,1}},
+            // .{.{ 0.5,  0.5,  0.5}, .{0,0,1,1}},
+            // .{.{-0.5,  0.5,  0.5}, .{1,1,1,1}},
 
-            .{.{-0.5, -0.5, -0.5}, .{1,0,0,1}},
-            .{.{ 0.5, -0.5, -0.5}, .{0,1,0,1}},
-            .{.{ 0.5,  0.5, -0.5}, .{0,0,1,1}},
-            .{.{-0.5,  0.5, -0.5}, .{1,1,1,1}},
+            // .{.{-0.5, -0.5, -0.5}, .{1,0,0,1}},
+            // .{.{ 0.5, -0.5, -0.5}, .{0,1,0,1}},
+            // .{.{ 0.5,  0.5, -0.5}, .{0,0,1,1}},
+            // .{.{-0.5,  0.5, -0.5}, .{1,1,1,1}},
+            // Front face (+Z)
+            .{.{-0.5, -0.5,  0.5}, .{0, 1}},
+            .{.{ 0.5, -0.5,  0.5}, .{1, 1}},
+            .{.{ 0.5,  0.5,  0.5}, .{1, 0}},
+            .{.{-0.5,  0.5,  0.5}, .{0, 0}},
+
+            // Back face (-Z)
+            .{.{ 0.5, -0.5, -0.5}, .{0, 1}},
+            .{.{-0.5, -0.5, -0.5}, .{1, 1}},
+            .{.{-0.5,  0.5, -0.5}, .{1, 0}},
+            .{.{ 0.5,  0.5, -0.5}, .{0, 0}},
+
+            // Left face (-X)
+            .{.{-0.5, -0.5, -0.5}, .{0, 1}},
+            .{.{-0.5, -0.5,  0.5}, .{1, 1}},
+            .{.{-0.5,  0.5,  0.5}, .{1, 0}},
+            .{.{-0.5,  0.5, -0.5}, .{0, 0}},
+
+            // Right face (+X)
+            .{.{ 0.5, -0.5,  0.5}, .{0, 1}},
+            .{.{ 0.5, -0.5, -0.5}, .{1, 1}},
+            .{.{ 0.5,  0.5, -0.5}, .{1, 0}},
+            .{.{ 0.5,  0.5,  0.5}, .{0, 0}},
+
+            // Top face (+Y)
+            .{.{-0.5,  0.5,  0.5}, .{0, 1}},
+            .{.{ 0.5,  0.5,  0.5}, .{1, 1}},
+            .{.{ 0.5,  0.5, -0.5}, .{1, 0}},
+            .{.{-0.5,  0.5, -0.5}, .{0, 0}},
+
+            // Bottom face (-Y)
+            .{.{-0.5, -0.5, -0.5}, .{0, 1}},
+            .{.{ 0.5, -0.5, -0.5}, .{1, 1}},
+            .{.{ 0.5, -0.5,  0.5}, .{1, 0}},
+            .{.{-0.5, -0.5,  0.5}, .{0, 0}},
         ];
         vertex_buffer_size := size_of(Scene_Vertex) * quadvertices.count;
         vbuffer_desc := D3D12_RESOURCE_DESC_INIT_AS_BUFFER(xx vertex_buffer_size);
@@ -372,12 +425,18 @@ load_assets :: () {
         scene_vertex_buffer_view.SizeInBytes    = xx vertex_buffer_size;
 
         quadindices : [] u32 = .[
-            0, 1, 2, 0, 2, 3,
-            1, 5, 6, 1, 6, 2,
-            5, 4, 7, 5, 7, 6,
-            4, 0, 3, 4, 3, 7,
-            3, 2, 6, 3, 6, 7,
-            4, 5, 1, 4, 1, 0,
+            // 0, 1, 2, 0, 2, 3,
+            // 1, 5, 6, 1, 6, 2,
+            // 5, 4, 7, 5, 7, 6,
+            // 4, 0, 3, 4, 3, 7,
+            // 3, 2, 6, 3, 6, 7,
+            // 4, 5, 1, 4, 1, 0,
+            0, 1, 2, 0, 2, 3,       // front
+            4, 5, 6, 4, 6, 7,       // back
+            8, 9,10, 8,10,11,       // left
+            12,13,14,12,14,15,      // right
+            16,17,18,16,18,19,      // top
+            20,21,22,20,22,23       // bottom
         ];
         index_buffer_size := size_of(u32) * quadindices.count;
         ibuffer_desc := D3D12_RESOURCE_DESC_INIT_AS_BUFFER(xx index_buffer_size);
@@ -464,8 +523,21 @@ load_assets :: () {
         }
 
         ID3D12GraphicsCommandList_ResourceBarrier(cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(world_matrix_buffer.resource, .COMMON, .COPY_DEST));
-        commandlist_upload_buffer_data(*cmdlist, *world_matrix_buffer, world_matrices.data, xx world_matrices.count * size_of(Matrix4));
+        commandlist_update_buffer_data(*cmdlist, *world_matrix_buffer, world_matrices.data, xx world_matrices.count * size_of(Matrix4));
         ID3D12GraphicsCommandList_ResourceBarrier(cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(world_matrix_buffer.resource, .COPY_DEST, .GENERIC_READ));
+    }
+
+    bitmap: Bitmap;
+    defer deinit(*bitmap);
+    {
+        bitmap_load(*bitmap, "resources/textures/dirt_12-256x256.png");
+
+        success:, texture = make_texture2d_from_bitmap(*bitmap, *cbvsrvuav_heap);
+        ok_or_exit(success, "load_assets: Failed to create Texture!");
+
+        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(texture.resource, .COMMON, .COPY_DEST));
+        commandlist_update_texture_data(*cmdlist, *texture, bitmap.data.data);
+        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(texture.resource, .COPY_DEST, .PIXEL_SHADER_RESOURCE));
     }
 
     // close the resource creation command list and execute it to begin the vbuffer copy into the default heap
@@ -680,9 +752,10 @@ backend_populate_commandlists :: () {
 
         cbv_handle := ID3D12DescriptorHeap_GetGPUDescriptorHandleForHeapStart(cbvsrvuav_heap.heap);
         cbv_handle.ptr += xx (xx CBV_SRV_UAV_HEAP_OFFSET.CBV * cbvsrvuav_heap.size);
-        ID3D12GraphicsCommandList_SetGraphicsRootDescriptorTable(scene_cmdlist.cmdlist, 0, cbv_handle);
 
+        ID3D12GraphicsCommandList_SetGraphicsRootDescriptorTable(scene_cmdlist.cmdlist, 0, cbv_handle);
         ID3D12GraphicsCommandList_SetGraphicsRootDescriptorTable(scene_cmdlist.cmdlist, 1, world_matrix_buffer.srv.gpu);
+        ID3D12GraphicsCommandList_SetGraphicsRootDescriptorTable(scene_cmdlist.cmdlist, 2, texture.srv.gpu);
 
         ID3D12GraphicsCommandList_RSSetViewports(scene_cmdlist.cmdlist, 1, *scene_viewport);
         ID3D12GraphicsCommandList_RSSetScissorRects(scene_cmdlist.cmdlist, 1, *scene_scissor_rect);
@@ -722,7 +795,7 @@ backend_populate_commandlists :: () {
         }
 
         ID3D12GraphicsCommandList_ResourceBarrier(scene_cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(world_matrix_buffer.resource, .COMMON, .COPY_DEST));
-        commandlist_upload_buffer_data(*scene_cmdlist, *world_matrix_buffer, world_matrices.data, xx world_matrices.count * size_of(Matrix4));
+        commandlist_update_buffer_data(*scene_cmdlist, *world_matrix_buffer, world_matrices.data, xx world_matrices.count * size_of(Matrix4));
         ID3D12GraphicsCommandList_ResourceBarrier(scene_cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(world_matrix_buffer.resource, .COPY_DEST, .GENERIC_READ));
 
         ID3D12GraphicsCommandList_DrawIndexedInstanced(scene_cmdlist.cmdlist, 36, xx state.scene.entities.count, 0, 0, 0);
@@ -782,6 +855,7 @@ backend_fini :: () {
     safe_release_and_reset(*post_vertex\_buffer);
     safe_release_and_reset(*scene_constant_buffer);
     deinit(*world_matrix_buffer);
+    deinit(*texture);
 
     // pipeline object
     deinit(*rtv_heap);

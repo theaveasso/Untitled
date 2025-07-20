@@ -40,7 +40,7 @@ command_list_close             :: inline (using command_list: *Command_List) { I
 
 command_list_execute           :: inline (cmdq: *ID3D12CommandQueue, cmdlist_counts: s64, cmdlist_data: **ID3D12CommandList) { ID3D12CommandQueue_ExecuteCommandLists(xx cmdq, xx cmdlist_counts, cmdlist_data); }
 
-commandlist_upload_buffer_data :: (command_list: *Command_List, buffer: *Buffer, data: *void, size: s64) -> bool {
+commandlist_update_buffer_data :: (command_list: *Command_List, buffer: *Buffer, data: *void, size: s64) -> bool {
 
     CheckInit();
     using state.d3d12;
@@ -58,5 +58,46 @@ commandlist_upload_buffer_data :: (command_list: *Command_List, buffer: *Buffer,
     ID3D12GraphicsCommandList_CopyBufferRegion(xx command_list.cmdlist, buffer.resource, 0, buffer.upload_buffer, 0, xx size);
     ID3D12Resource_Unmap(buffer.upload_buffer, 0, null);
 
+    return true;
+}
+
+commandlist_update_texture_data :: (command_list: *Command_List, _texture: *Texture, data: *void, start_level: s32 = 0, level_counts: s32 = 1, start_slice: s32 = 0, slice_counts: s32 = 1) -> bool {
+
+    CheckInit();
+    using state.d3d12;
+
+    if !_texture.resource || !_texture.upload_buffer {
+        log_error("commandlist_upload_texture_data: Failed Texture is not initialized!");
+        return false;
+    }
+
+    levels := min(_texture.resource_desc.MipLevels - start_level, level_counts);
+    slices := min(_texture.resource_desc.DepthOrArraySize - start_slice, slice_counts);
+
+    cpu_offset: s64 = 0;
+    gpu_offset: s64 = 0;
+
+    _levels := start_level + levels;
+    _slices := start_slice + slices;
+
+    Data: [] D3D12_SUBRESOURCE_DATA;
+    Data = NewArray(levels, D3D12_SUBRESOURCE_DATA);
+
+    for i: start_slice.._slices - 1 {
+        start_subresource := i * _texture.resource_desc.MipLevels + start_level;
+        gpu_offset = xx _texture.layouts[start_subresource].Offset;
+        for j: start_level.._levels - 1 {
+            sub_num  := i * _texture.resource_desc.MipLevels + j;
+            cpumiplevel := j - start_level;
+            Data[cpumiplevel].pData = data + cpu_offset;
+            Data[cpumiplevel].RowPitch      = _texture.layouts[sub_num].Footprint.Width * xx _texture.bpp;
+            Data[cpumiplevel].SlicePitch    = _texture.layouts[sub_num].Footprint.Height * Data[cpumiplevel].RowPitch;
+            cpu_offset += Data[cpumiplevel].SlicePitch;
+        }
+
+        UpdateSubresource(command_list.cmdlist, _texture.resource, _texture.upload_buffer, gpu_offset, xx start_subresource, xx levels, Data.data);
+    }
+
+    array_free(Data);
     return true;
 }
