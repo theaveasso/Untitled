@@ -15,12 +15,40 @@ make_vertex_buffer :: () {
 
 }
 
-make_constants_buffer  :: (descriptor_heap: *Descriptor_Heap) -> success: bool, Buffer {
+make_constants_buffer  :: (descriptor_heap: *Descriptor_Heap, stride_size: u32) -> success: bool, Buffer {
 
     CheckInit();
     using state.d3d12;
 
     ret: Buffer;
+
+    buffersize := CalculateConstantBufferByteSize(stride_size);
+    success := HR(ID3D12Device_CreateCommittedResource(
+        device,
+        *D3D12_HEAP_PROPERTIES_INIT(.UPLOAD),
+        .NONE, 
+        *D3D12_RESOURCE_DESC_INIT_AS_BUFFER(xx buffersize),
+        .GENERIC_READ,
+        null,
+        *uid(ID3D12Resource_UUID),
+        xx *ret.upload_buffer));
+    if !success return false, .{};
+
+    ret.gpu_addr = ID3D12Resource_GetGPUVirtualAddress(ret.upload_buffer);
+
+    cbv_desc: D3D12_CONSTANT_BUFFER_VIEW_DESC;
+    cbv_desc.SizeInBytes = xx buffersize;
+    cbv_desc.BufferLocation = ret.gpu_addr;
+
+    gpu_handle := ID3D12DescriptorHeap_GetGPUDescriptorHandleForHeapStart(descriptor_heap.heap);
+    gpu_handle.ptr += xx (xx CBV_SRV_UAV_HEAP_OFFSET.CBV * descriptor_heap.size);
+
+    cbv_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(descriptor_heap.heap);
+    cbv_handle.ptr += xx (xx CBV_SRV_UAV_HEAP_OFFSET.CBV * descriptor_heap.size);
+    ID3D12Device_CreateConstantBufferView(device, *cbv_desc, cbv_handle);
+
+    ret.cbv.cpu = cbv_handle;
+    ret.cbv.gpu = gpu_handle;
 
     return true, ret;
 }

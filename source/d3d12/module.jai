@@ -20,5 +20,6 @@ GPU_Resource :: struct {
     rtvs:      [..] Descriptor_Handle;
     dsvs:      [..] Descriptor_Handle; 
 
-    gpu_addr:       D3D12_GPU_VIRTUAL_ADDRESS;
+    gpu_addr: D3D12_GPU_VIRTUAL_ADDRESS;
+    map_addr: *void;
 }

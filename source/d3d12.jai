@@ -61,7 +61,7 @@ D3D12_CONTEXT :: struct {
     scene_index\_buffer_view:   D3D12_INDEX_BUFFER_VIEW;
     post\_vertex_buffer:        *ID3D12Resource;
     post\_vertex_buffer_view:   D3D12_VERTEX_BUFFER_VIEW;
-    scene_constant_buffer:      *ID3D12Resource;
+    scene_constant_buffer:      Buffer;
     texture:                    Texture;
 
     world_matrix_buffer: Buffer;
@@ -492,27 +492,13 @@ load_assets :: () {
 
     // create the constant buffer
     {
-        aligned_cb_size := CalculateConstantBufferByteSize(size_of(Scene_CBuffer));
-        total_size := aligned_cb_size * ctx_buffer_count;
-        cbuffer_desc := D3D12_RESOURCE_DESC_INIT_AS_BUFFER(xx total_size);
-        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(device, *D3D12_HEAP_PROPERTIES_INIT(.UPLOAD), .NONE, *cbuffer_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *scene_constant_buffer)), "load_size_dependent_resource: Failed to create CommittedResource!");
-        NAME_D3D12_OBJECT(scene_constant_buffer, "scene_constant_buffer");
-
-        base_buffer_location := ID3D12Resource_GetGPUVirtualAddress(scene_constant_buffer);
-
-        cpu_handle := ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(cbvsrvuav_heap.heap);
-        cpu_handle.ptr += xx (xx CBV_SRV_UAV_HEAP_OFFSET.CBV * cbvsrvuav_heap.size);
-        
-        cbv_desc: D3D12_CONSTANT_BUFFER_VIEW_DESC;
-        cbv_desc.SizeInBytes = xx CalculateConstantBufferByteSize(size_of(Scene_CBuffer));
-        cbv_desc.BufferLocation = xx (base_buffer_location + xx CalculateConstantBufferByteSize(size_of(Scene_CBuffer)));
-        ID3D12Device_CreateConstantBufferView(device, *cbv_desc, cpu_handle);
+        success:, scene_constant_buffer = make_constants_buffer(*cbvsrvuav_heap, xx size_of(Scene_CBuffer));
 
         // map and initialize the constant buffer.
         // we don't unmap this until the app closes. keeping things mapped for the lifetime of the resource is okay
         read_range : D3D12_RANGE = .{0, 0};
-        ID3D12Resource_Map(scene_constant_buffer, 0, *read_range, xx *cbv_mapaddr);
-        memcpy(cbv_mapaddr, *scene_cbuffer, size_of(Scene_CBuffer));
+        ID3D12Resource_Map(scene_constant_buffer.upload_buffer, 0, *read_range, xx *scene_constant_buffer.map_addr);
+        memcpy(scene_constant_buffer.map_addr, *scene_cbuffer, size_of(Scene_CBuffer));
     }
 
     {
@@ -532,7 +518,7 @@ load_assets :: () {
     {
         bitmap_load(*bitmap, "resources/textures/dirt_12-256x256.png");
 
-        success:, texture = make_texture2d_from_bitmap(*bitmap, *cbvsrvuav_heap);
+        success:, texture = make_texture2d_from_bitmap(*cbvsrvuav_heap, *bitmap);
         ok_or_exit(success, "load_assets: Failed to create Texture!");
 
         ID3D12GraphicsCommandList_ResourceBarrier(cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(texture.resource, .COMMON, .COPY_DEST));
@@ -750,10 +736,7 @@ backend_populate_commandlists :: () {
         heaps: [] *ID3D12DescriptorHeap = .[cbvsrvuav_heap.heap];
         ID3D12GraphicsCommandList_SetDescriptorHeaps(scene_cmdlist.cmdlist, xx heaps.count, xx heaps.data);
 
-        cbv_handle := ID3D12DescriptorHeap_GetGPUDescriptorHandleForHeapStart(cbvsrvuav_heap.heap);
-        cbv_handle.ptr += xx (xx CBV_SRV_UAV_HEAP_OFFSET.CBV * cbvsrvuav_heap.size);
-
-        ID3D12GraphicsCommandList_SetGraphicsRootDescriptorTable(scene_cmdlist.cmdlist, 0, cbv_handle);
+        ID3D12GraphicsCommandList_SetGraphicsRootDescriptorTable(scene_cmdlist.cmdlist, 0, scene_constant_buffer.cbv.gpu);
         ID3D12GraphicsCommandList_SetGraphicsRootDescriptorTable(scene_cmdlist.cmdlist, 1, world_matrix_buffer.srv.gpu);
         ID3D12GraphicsCommandList_SetGraphicsRootDescriptorTable(scene_cmdlist.cmdlist, 2, texture.srv.gpu);
 
@@ -776,9 +759,8 @@ backend_populate_commandlists :: () {
         ID3D12GraphicsCommandList_IASetIndexBuffer(scene_cmdlist.cmdlist, *scene_index_buffer_view);
 
         cbuffer : Scene_CBuffer = .{transform = transpose(state.camera.viewproj)};
-
-        offset := ctx_current_frame_index * CalculateConstantBufferByteSize(size_of(Scene_CBuffer));
-        memcpy(cbv_mapaddr + offset, *cbuffer, size_of(Scene_CBuffer));
+        memcpy(scene_constant_buffer.map_addr, *cbuffer, size_of(Scene_CBuffer));
+        // offset := ctx_current_frame_index * CalculateConstantBufferByteSize(size_of(Scene_CBuffer));
 
         world_matrices: [..] Matrix4;
         for state.scene.entities {
@@ -853,7 +835,7 @@ backend_fini :: () {
     safe_release_and_reset(*scene_vertex_buffer);
     safe_release_and_reset(*scene_index\_buffer);
     safe_release_and_reset(*post_vertex\_buffer);
-    safe_release_and_reset(*scene_constant_buffer);
+    deinit(*scene_constant_buffer);
     deinit(*world_matrix_buffer);
     deinit(*texture);
 
