@@ -7,6 +7,24 @@ Structured_Buffer_Type :: enum {
     READ_WRITE  :: 2;
 }
 
+make_index_buffer  :: () {
+
+}
+
+make_vertex_buffer :: () {
+
+}
+
+make_constants_buffer  :: (descriptor_heap: *Descriptor_Heap) -> success: bool, Buffer {
+
+    CheckInit();
+    using state.d3d12;
+
+    ret: Buffer;
+
+    return true, ret;
+}
+
 make_structured_buffer :: (descriptor_heap: *Descriptor_Heap, stride_size: u32, element_count: u32, counter: bool = false, raw: bool = false, padding: bool = false) -> success: bool, Buffer {
 
     CheckInit();

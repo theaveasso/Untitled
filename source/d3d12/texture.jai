@@ -11,7 +11,7 @@ Texture :: struct {
     row_size_in_bytes: [] u64;
 }
 
-make_texture2d_from_bitmap :: (bitmap: *Bitmap, descriptor_heap: *Descriptor_Heap) -> success: bool, Texture {
+make_texture2d_from_bitmap :: (descriptor_heap: *Descriptor_Heap, bitmap: *Bitmap) -> success: bool, Texture {
 
     CheckInit();
     using state.d3d12;
@@ -22,7 +22,15 @@ make_texture2d_from_bitmap :: (bitmap: *Bitmap, descriptor_heap: *Descriptor_Hea
     ret.width   = xx bitmap.width; 
     ret.height  = xx bitmap.height;
 
-    success := HR(ID3D12Device_CreateCommittedResource(device, *D3D12_HEAP_PROPERTIES_INIT(), .NONE, *ret.resource_desc, .COMMON, null, *uid(ID3D12Resource_UUID), xx *ret.resource));
+    success := HR(ID3D12Device_CreateCommittedResource(
+        device,
+        *D3D12_HEAP_PROPERTIES_INIT(),
+        .NONE,
+        *ret.resource_desc,
+        .COMMON,
+        null,
+        *uid(ID3D12Resource_UUID),
+        xx *ret.resource));
     if !success return false, .{};
 
     num_subresources := ret.resource_desc.MipLevels * ret.resource_desc.DepthOrArraySize;
@@ -32,9 +40,26 @@ make_texture2d_from_bitmap :: (bitmap: *Bitmap, descriptor_heap: *Descriptor_Hea
     ret.row_size_in_bytes = NewArray(num_subresources, u64);
 
     upload_buffer_size: u64;
-    ID3D12Device_GetCopyableFootprints(device, *ret.resource_desc, 0, xx num_subresources, 0, ret.layouts.data, ret.num_rows.data, ret.row_size_in_bytes.data, *upload_buffer_size);
+    ID3D12Device_GetCopyableFootprints(
+        device,
+        *ret.resource_desc,
+        0,
+        xx num_subresources,
+        0,
+        ret.layouts.data,
+        ret.num_rows.data,
+        ret.row_size_in_bytes.data,
+        *upload_buffer_size);
 
-    success = HR(ID3D12Device_CreateCommittedResource(device, *D3D12_HEAP_PROPERTIES_INIT(.UPLOAD), .NONE, *D3D12_RESOURCE_DESC_INIT_AS_BUFFER(xx upload_buffer_size), .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *ret.upload_buffer));
+    success = HR(ID3D12Device_CreateCommittedResource(
+        device,
+        *D3D12_HEAP_PROPERTIES_INIT(.UPLOAD),
+        .NONE,
+        *D3D12_RESOURCE_DESC_INIT_AS_BUFFER(xx upload_buffer_size),
+        .GENERIC_READ,
+        null,
+        *uid(ID3D12Resource_UUID),
+        xx *ret.upload_buffer));
     if !success return false, .{};
 
     ret.base.srv = create_shader_resource_view(*ret, descriptor_heap);
