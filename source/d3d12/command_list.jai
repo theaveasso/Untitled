@@ -24,23 +24,27 @@ deinit :: (command_list: *Command_List) {
     safe_release_and_reset(*command_list.cmdlist);
 }
 
-command_list_reset_w_allocator :: inline (using command_list: *Command_List) { 
+commandlist_reset_w_allocator :: inline (using command_list: *Command_List) { 
     ID3D12CommandAllocator_Reset(allocator);
     ID3D12GraphicsCommandList_Reset(cmdlist, allocator, null); 
 }
-command_list_reset_w_allocator :: inline (using command_list: *Command_List, pipeline: *ID3D12PipelineState) { 
+
+commandlist_reset_w_allocator :: inline (using command_list: *Command_List, pipeline: *ID3D12PipelineState) { 
     ID3D12CommandAllocator_Reset(allocator);
     ID3D12GraphicsCommandList_Reset(cmdlist, allocator, pipeline); 
 }
 
-command_list_reset             :: inline (using command_list: *Command_List) { ID3D12GraphicsCommandList_Reset(cmdlist, null, null); }
-command_list_reset             :: inline (using command_list: *Command_List, pipeline: *ID3D12PipelineState) { ID3D12GraphicsCommandList_Reset(cmdlist, null, pipeline); }
+commandlist_reset               :: inline (using command_list: *Command_List) { ID3D12GraphicsCommandList_Reset(cmdlist, null, null); }
 
-command_list_close             :: inline (using command_list: *Command_List) { ID3D12GraphicsCommandList_Close(cmdlist); }
+commandlist_reset               :: inline (using command_list: *Command_List, pipeline: *ID3D12PipelineState) { ID3D12GraphicsCommandList_Reset(cmdlist, null, pipeline); }
 
-command_list_execute           :: inline (cmdq: *ID3D12CommandQueue, cmdlist_counts: s64, cmdlist_data: **ID3D12CommandList) { ID3D12CommandQueue_ExecuteCommandLists(xx cmdq, xx cmdlist_counts, cmdlist_data); }
+commandlist_resource_transition :: inline (using command_list: *Command_List, resource: *ID3D12Resource, state_before: D3D12_RESOURCE_STATES, state_after: D3D12_RESOURCE_STATES) { ID3D12GraphicsCommandList_ResourceBarrier(cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(resource, state_before, state_after)); }
 
-commandlist_update_buffer_data :: (command_list: *Command_List, buffer: *Buffer, data: *void, size: s64) -> bool {
+commandlist_close               :: inline (using command_list: *Command_List) { ID3D12GraphicsCommandList_Close(cmdlist); }
+
+commandlist_execute             :: inline (cmdq: *ID3D12CommandQueue, cmdlist_counts: s64, cmdlist_data: **ID3D12CommandList) { ID3D12CommandQueue_ExecuteCommandLists(xx cmdq, xx cmdlist_counts, cmdlist_data); }
+
+commandlist_update_buffer_data  :: (command_list: *Command_List, buffer: *Buffer, data: *void, size: s64) -> bool {
 
     CheckInit();
     using state.d3d12;

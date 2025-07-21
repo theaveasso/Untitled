@@ -92,13 +92,14 @@ per_thread_init :: inline () {
 #import "Compiler";
 #import "stb_image";
 
+#import, dir "../vendor/assimp";
+
 Input :: #import "Input";
 
 #load "bitmap.jai";
 #load "d3d12.jai";
 #load "utils.jai";
 #load "camera.jai";
-#load "skybox.jai";
 #load "math.jai";
 #load "entity.jai";
 #load "mesh.jai";

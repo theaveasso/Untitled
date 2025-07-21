@@ -1,5 +1,30 @@
+BUFFER_ELEM_VEC2 :: 2;
+BUFFER_ELEM_VEC3 :: 3;
+BUFFER_ELEM_VEC4 :: 4;
+
+BUFFER_ELEM_TYPE_UNSIGNED_CHAR  :: 1;
+BUFFER_ELEM_TYPE_UNSIGNED_SHORT :: 2;
+BUFFER_ELEM_TYPE_UNSIGNED_INT   :: 3;
+BUFFER_ELEM_TYPE_FLOAT          :: 4;
+
 Buffer :: struct {
     using #as base: GPU_Resource;
+
+    union {
+        vbv: D3D12_VERTEX_BUFFER_VIEW;
+        ibv: D3D12_INDEX_BUFFER_VIEW;
+    }
+}
+
+Buffer_View :: struct {
+    id: s32             = -1;
+    byte_offset: u32    = 0;
+    byte_length: u32    = 0;
+    byte_stride: u32    = 0;
+    counts:             = 0;
+
+    element_type: u32   = BUFFER_ELEM_VEC3; 
+    component_type: u32 = BUFFER_ELEM_TYPE_FLOAT;
 }
 
 Structured_Buffer_Type :: enum {
@@ -7,12 +32,79 @@ Structured_Buffer_Type :: enum {
     READ_WRITE  :: 2;
 }
 
-make_index_buffer  :: () {
 
+make_vertex_buffer :: (stride_size: u32, element_count: u32) -> success: bool, Buffer {
+
+    CheckInit();
+    using state.d3d12;
+
+    ret: Buffer;
+
+    buffer_desc := D3D12_RESOURCE_DESC_INIT_AS_BUFFER(xx (stride_size * element_count));
+    success := HR(ID3D12Device_CreateCommittedResource(
+        device,
+        *D3D12_HEAP_PROPERTIES_INIT(),
+        .NONE,
+        *buffer_desc,
+        .COMMON,
+        null,
+        *uid(ID3D12Resource_UUID),
+        xx *ret.resource));
+    if !success return false, .{};
+
+    success   = HR(ID3D12Device_CreateCommittedResource(
+        device,
+        *D3D12_HEAP_PROPERTIES_INIT(.UPLOAD),
+        .NONE,
+        *buffer_desc,
+        .GENERIC_READ,
+        null,
+        *uid(ID3D12Resource_UUID),
+        xx *ret.upload_buffer));
+    if !success return false, .{};
+
+    ret.vbv.BufferLocation = ID3D12Resource_GetGPUVirtualAddress(ret.resource);
+    ret.vbv.StrideInBytes  = xx stride_size;
+    ret.vbv.SizeInBytes    = xx (stride_size * element_count);
+
+    return true, ret;
 }
 
-make_vertex_buffer :: () {
+make_index_buffer  :: (stride_size: u32, element_count: u32) -> success: bool, Buffer {
 
+    CheckInit();
+    using state.d3d12;
+
+    ret: Buffer;
+
+    buffer_desc := D3D12_RESOURCE_DESC_INIT_AS_BUFFER(xx (stride_size * element_count));
+    success := HR(ID3D12Device_CreateCommittedResource(
+        device,
+        *D3D12_HEAP_PROPERTIES_INIT(),
+        .NONE,
+        *buffer_desc,
+        .COMMON,
+        null,
+        *uid(ID3D12Resource_UUID),
+        xx *ret.resource));
+    if !success return false, .{};
+
+    success   = HR(ID3D12Device_CreateCommittedResource(
+        device,
+        *D3D12_HEAP_PROPERTIES_INIT(.UPLOAD),
+        .NONE,
+        *buffer_desc,
+        .GENERIC_READ,
+        null,
+        *uid(ID3D12Resource_UUID),
+        xx *ret.upload_buffer));
+    if !success return false, .{};
+
+    ret.ibv.BufferLocation = ID3D12Resource_GetGPUVirtualAddress(ret.resource);
+    ret.ibv.SizeInBytes    = xx (stride_size * element_count);
+    ret.ibv.Format         = .R32_UINT;
+
+    return true, ret;
 }
 
 make_constants_buffer  :: (descriptor_heap: *Descriptor_Heap, stride_size: u32) -> success: bool, Buffer {

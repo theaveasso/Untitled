@@ -55,14 +55,13 @@ D3D12_CONTEXT :: struct {
     cbvsrvuav_heap:      Descriptor_Heap; 
 
     // app resource
-    scene_vertex_buffer:        *ID3D12Resource;
-    scene_index\_buffer:        *ID3D12Resource;
-    scene_vertex_buffer_view:   D3D12_VERTEX_BUFFER_VIEW;
-    scene_index\_buffer_view:   D3D12_INDEX_BUFFER_VIEW;
     post\_vertex_buffer:        *ID3D12Resource;
     post\_vertex_buffer_view:   D3D12_VERTEX_BUFFER_VIEW;
     scene_constant_buffer:      Buffer;
     texture:                    Texture;
+
+    scene_vbuffer:              Buffer;
+    scene_ibuffer:              Buffer;
 
     world_matrix_buffer: Buffer;
 
@@ -345,119 +344,12 @@ load_assets :: () {
         ok_or_exit(HR(ID3D12Device_CreateCommandList(device, 0, .DIRECT, post\_cmdallocator[ctx_current_frame_index], null,  *uid(ID3D12CommandList_UUID), xx *post\_cmdlist)), "load_asset: Failed to create D3D12GraphicCommandList!");
 
         ok:, scene_cmdlist = make_command_list(scene_cmdallocator[ctx_current_frame_index], .DIRECT);
-        command_list_close(*scene_cmdlist);
+        commandlist_close(*scene_cmdlist);
         ok_or_exit(HR(ID3D12GraphicsCommandList_Close(post_cmdlist)), "load_assets: Failed to close D3D12GraphicsCommandList!");
     }
 
     load_size_dependent_resource();
     load_scene_resolution_dependent_resource();
-
-    scene_vertex_upload_buffer : *ID3D12Resource; defer safe_release_and_reset(*scene_vertex_upload_buffer);
-    scene_index\_upload_buffer : *ID3D12Resource; defer safe_release_and_reset(*scene_index_upload_buffer);
-    {
-        // define the geometry for a thin quad that will animate across the screen
-        x := quad_width  / 2.0;
-        y := quad_height / 2.0;
-        quadvertices : [] Scene_Vertex = .[
-            // .{.{-0.5, -0.5,  0.5}, .{1,0,0,1}},
-            // .{.{ 0.5, -0.5,  0.5}, .{0,1,0,1}},
-            // .{.{ 0.5,  0.5,  0.5}, .{0,0,1,1}},
-            // .{.{-0.5,  0.5,  0.5}, .{1,1,1,1}},
-
-            // .{.{-0.5, -0.5, -0.5}, .{1,0,0,1}},
-            // .{.{ 0.5, -0.5, -0.5}, .{0,1,0,1}},
-            // .{.{ 0.5,  0.5, -0.5}, .{0,0,1,1}},
-            // .{.{-0.5,  0.5, -0.5}, .{1,1,1,1}},
-            // Front face (+Z)
-            .{.{-0.5, -0.5,  0.5}, .{0, 1}},
-            .{.{ 0.5, -0.5,  0.5}, .{1, 1}},
-            .{.{ 0.5,  0.5,  0.5}, .{1, 0}},
-            .{.{-0.5,  0.5,  0.5}, .{0, 0}},
-
-            // Back face (-Z)
-            .{.{ 0.5, -0.5, -0.5}, .{0, 1}},
-            .{.{-0.5, -0.5, -0.5}, .{1, 1}},
-            .{.{-0.5,  0.5, -0.5}, .{1, 0}},
-            .{.{ 0.5,  0.5, -0.5}, .{0, 0}},
-
-            // Left face (-X)
-            .{.{-0.5, -0.5, -0.5}, .{0, 1}},
-            .{.{-0.5, -0.5,  0.5}, .{1, 1}},
-            .{.{-0.5,  0.5,  0.5}, .{1, 0}},
-            .{.{-0.5,  0.5, -0.5}, .{0, 0}},
-
-            // Right face (+X)
-            .{.{ 0.5, -0.5,  0.5}, .{0, 1}},
-            .{.{ 0.5, -0.5, -0.5}, .{1, 1}},
-            .{.{ 0.5,  0.5, -0.5}, .{1, 0}},
-            .{.{ 0.5,  0.5,  0.5}, .{0, 0}},
-
-            // Top face (+Y)
-            .{.{-0.5,  0.5,  0.5}, .{0, 1}},
-            .{.{ 0.5,  0.5,  0.5}, .{1, 1}},
-            .{.{ 0.5,  0.5, -0.5}, .{1, 0}},
-            .{.{-0.5,  0.5, -0.5}, .{0, 0}},
-
-            // Bottom face (-Y)
-            .{.{-0.5, -0.5, -0.5}, .{0, 1}},
-            .{.{ 0.5, -0.5, -0.5}, .{1, 1}},
-            .{.{ 0.5, -0.5,  0.5}, .{1, 0}},
-            .{.{-0.5, -0.5,  0.5}, .{0, 0}},
-        ];
-        vertex_buffer_size := size_of(Scene_Vertex) * quadvertices.count;
-        vbuffer_desc := D3D12_RESOURCE_DESC_INIT_AS_BUFFER(xx vertex_buffer_size);
-
-        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(device, *D3D12_HEAP_PROPERTIES_INIT(), .NONE, *vbuffer_desc, .COMMON, null, *uid(ID3D12Resource_UUID), xx *scene_vertex_buffer)), "load_assets: Failed to create CommittedResource!");
-        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(device, *D3D12_HEAP_PROPERTIES_INIT(.UPLOAD), .NONE, *vbuffer_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *scene_vertex_upload_buffer)), "load_assets: Failed to create CommittedResource!");
-
-        cpu_mapaddr: *void;
-        read_range: D3D12_RANGE = .{0, 0};
-        ID3D12Resource_Map(scene_vertex_upload_buffer, 0, *read_range, xx *cpu_mapaddr);
-        memcpy(cpu_mapaddr, xx quadvertices.data, xx vertex_buffer_size);
-        ID3D12Resource_Unmap(scene_vertex_upload_buffer, 0, null);
-        
-        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(scene_vertex_buffer, .COMMON, .COPY_DEST));
-        ID3D12GraphicsCommandList_CopyBufferRegion(cmdlist.cmdlist, scene_vertex_buffer, 0, scene_vertex_upload_buffer, 0, xx vertex_buffer_size);
-        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(scene_vertex_buffer, .COPY_DEST, .VERTEX_AND_CONSTANT_BUFFER));
-        
-        scene_vertex_buffer_view.BufferLocation = ID3D12Resource_GetGPUVirtualAddress(scene_vertex_buffer);
-        scene_vertex_buffer_view.StrideInBytes  = size_of(Scene_Vertex);
-        scene_vertex_buffer_view.SizeInBytes    = xx vertex_buffer_size;
-
-        quadindices : [] u32 = .[
-            // 0, 1, 2, 0, 2, 3,
-            // 1, 5, 6, 1, 6, 2,
-            // 5, 4, 7, 5, 7, 6,
-            // 4, 0, 3, 4, 3, 7,
-            // 3, 2, 6, 3, 6, 7,
-            // 4, 5, 1, 4, 1, 0,
-            0, 1, 2, 0, 2, 3,       // front
-            4, 5, 6, 4, 6, 7,       // back
-            8, 9,10, 8,10,11,       // left
-            12,13,14,12,14,15,      // right
-            16,17,18,16,18,19,      // top
-            20,21,22,20,22,23       // bottom
-        ];
-        index_buffer_size := size_of(u32) * quadindices.count;
-        ibuffer_desc := D3D12_RESOURCE_DESC_INIT_AS_BUFFER(xx index_buffer_size);
-
-        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(device, *D3D12_HEAP_PROPERTIES_INIT(), .NONE, *ibuffer_desc, .COMMON, null, *uid(ID3D12Resource_UUID), xx *scene_index_buffer)), "load_assets: Failed to create CommittedResource!");
-        ok_or_exit(HR(ID3D12Device_CreateCommittedResource(device, *D3D12_HEAP_PROPERTIES_INIT(.UPLOAD), .NONE, *ibuffer_desc, .GENERIC_READ, null, *uid(ID3D12Resource_UUID), xx *scene_index_upload_buffer)), "load_assets: Failed to create CommittedResource!");
-
-        icpu_mapaddr: *void;
-        irr: D3D12_RANGE = .{0, 0};
-        ID3D12Resource_Map(scene_index_upload_buffer, 0, *irr, xx *icpu_mapaddr);
-        memcpy(icpu_mapaddr, xx quadindices.data, xx index_buffer_size);
-        ID3D12Resource_Unmap(scene_index_upload_buffer, 0, null);
-
-        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(scene_index_buffer, .COMMON, .COPY_DEST));
-        ID3D12GraphicsCommandList_CopyBufferRegion(cmdlist.cmdlist, scene_index_buffer, 0, scene_index_upload_buffer, 0, xx index_buffer_size);
-        ID3D12GraphicsCommandList_ResourceBarrier(cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(scene_index_buffer, .COPY_DEST, .INDEX_BUFFER));
-
-        scene_index_buffer_view.BufferLocation = ID3D12Resource_GetGPUVirtualAddress(scene_index_buffer);
-        scene_index_buffer_view.SizeInBytes    = xx index_buffer_size;
-        scene_index_buffer_view.Format         = .R32_UINT;
-    }
 
     post_vertex_upload_buffer: *ID3D12Resource; defer safe_release_and_reset(*post_vertex_upload_buffer);
     // create/update the fullscreen quad vertex buffer
@@ -526,10 +418,46 @@ load_assets :: () {
         ID3D12GraphicsCommandList_ResourceBarrier(cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(texture.resource, .COPY_DEST, .PIXEL_SHADER_RESOURCE));
     }
 
+    {
+        ppf := aiPostProcessSteps.Triangulate | aiPostProcessSteps.CalcTangentSpace;
+        tscene := aiImportFileEx("resources/meshes/sphere.fbx", ppf.(u32), null);
+        defer aiFreeScene(tscene);
+
+        assert(tscene != null);
+
+        meshes: []*aiMesh;
+        meshes.data = tscene.mMeshes;
+        meshes.count = tscene.mNumMeshes;
+
+        success:, scene_vbuffer = make_vertex_buffer(size_of(Vector3), xx (meshes[0].mNumVertices));
+        success,  scene_ibuffer = make_index\_buffer(size_of(u32), xx (3 * meshes[0].mNumFaces));
+
+        index_data: [..] u32;
+        index_data.allocator = temp;
+        array_resize(*index_data, meshes[0].mNumFaces * 3);
+
+        for i: 0..meshes[0].mNumFaces - 1 {
+            index_data[i * 3    ] = meshes[0].mFaces[i].mIndices[0];
+            index_data[i * 3 + 1] = meshes[0].mFaces[i].mIndices[1];
+            index_data[i * 3 + 2] = meshes[0].mFaces[i].mIndices[2];
+        }
+
+        commandlist_resource_transition(*cmdlist, scene_vbuffer.resource, .COMMON, .COPY_DEST);
+        commandlist_resource_transition(*cmdlist, scene_ibuffer.resource, .COMMON, .COPY_DEST);
+
+        commandlist_update_buffer_data(*cmdlist, *scene_vbuffer, meshes[0].mVertices, size_of(Vector3) * meshes[0].mNumVertices);
+        commandlist_update_buffer_data(*cmdlist, *scene_ibuffer, index_data.data, size_of(u32) * 3 * meshes[0].mNumFaces);
+
+        print("index %\n", index_data.count);
+
+        commandlist_resource_transition(*cmdlist, scene_vbuffer.resource, .COPY_DEST, .VERTEX_AND_CONSTANT_BUFFER);
+        commandlist_resource_transition(*cmdlist, scene_ibuffer.resource, .COPY_DEST, .INDEX_BUFFER);
+    }
+
     // close the resource creation command list and execute it to begin the vbuffer copy into the default heap
-    command_list_close(*cmdlist);
+    commandlist_close(*cmdlist);
     cmdlists : [] *ID3D12CommandList = .[cmdlist.cmdlist];
-    command_list_execute(commandq, cmdlists.count, cmdlists.data);
+    commandlist_execute(commandq, cmdlists.count, cmdlists.data);
 
     array_resize(*fence_values, ctx_buffer_count);
     {
@@ -728,7 +656,7 @@ backend_populate_commandlists :: () {
     ok_or_exit(HR(ID3D12CommandAllocator_Reset(post_cmdallocator[ctx_current_frame_index])), "backend_populate_commandlists: Failed to reset D3D12CommandAllocator!");
     ok_or_exit(HR(ID3D12GraphicsCommandList_Reset(post_cmdlist, post_cmdallocator[ctx_current_frame_index], post_pipeline_state)), "backend_populate_commandlists: Failed to reset D3D12CommandList!");
 
-    command_list_reset_w_allocator(*scene_cmdlist, scene_pipeline_state);
+    commandlist_reset_w_allocator(*scene_cmdlist, scene_pipeline_state);
     
     // populate scene commandlist to render scene to intermediate render target
     {
@@ -755,12 +683,13 @@ backend_populate_commandlists :: () {
         ID3D12GraphicsCommandList_ClearDepthStencilView(scene_cmdlist.cmdlist, dsv_handle, .DEPTH, 1.0, 0, 1, *scene_scissor_rect);
 
         ID3D12GraphicsCommandList_IASetPrimitiveTopology(scene_cmdlist.cmdlist, .TRIANGLELIST);
-        ID3D12GraphicsCommandList_IASetVertexBuffers(scene_cmdlist.cmdlist, 0, 1, *scene_vertex_buffer_view);
-        ID3D12GraphicsCommandList_IASetIndexBuffer(scene_cmdlist.cmdlist, *scene_index_buffer_view);
+        // ID3D12GraphicsCommandList_IASetVertexBuffers(scene_cmdlist.cmdlist, 0, 1, *scene_vertex_buffer_view);
+        // ID3D12GraphicsCommandList_IASetIndexBuffer(scene_cmdlist.cmdlist, *scene_index_buffer_view);
+        ID3D12GraphicsCommandList_IASetVertexBuffers(scene_cmdlist.cmdlist, 0, 1, *scene_vbuffer.vbv);
+        ID3D12GraphicsCommandList_IASetIndexBuffer(scene_cmdlist.cmdlist, *scene_ibuffer.ibv);
 
         cbuffer : Scene_CBuffer = .{transform = transpose(state.camera.viewproj)};
         memcpy(scene_constant_buffer.map_addr, *cbuffer, size_of(Scene_CBuffer));
-        // offset := ctx_current_frame_index * CalculateConstantBufferByteSize(size_of(Scene_CBuffer));
 
         world_matrices: [..] Matrix4;
         for state.scene.entities {
@@ -780,10 +709,10 @@ backend_populate_commandlists :: () {
         commandlist_update_buffer_data(*scene_cmdlist, *world_matrix_buffer, world_matrices.data, xx world_matrices.count * size_of(Matrix4));
         ID3D12GraphicsCommandList_ResourceBarrier(scene_cmdlist.cmdlist, 1, *D3D12_RESOURCE_BARRIER_INIT_AS_TRANSITION(world_matrix_buffer.resource, .COPY_DEST, .GENERIC_READ));
 
-        ID3D12GraphicsCommandList_DrawIndexedInstanced(scene_cmdlist.cmdlist, 36, xx state.scene.entities.count, 0, 0, 0);
+        ID3D12GraphicsCommandList_DrawIndexedInstanced(scene_cmdlist.cmdlist, 9216, xx state.scene.entities.count, 0, 0, 0);
     }
 
-    command_list_close(*scene_cmdlist);
+    commandlist_close(*scene_cmdlist);
     {
         ID3D12GraphicsCommandList_SetGraphicsRootSignature(post_cmdlist, post_rootsig);
         heaps: [] *ID3D12DescriptorHeap = .[cbvsrvuav_heap.heap];
@@ -832,9 +761,9 @@ backend_fini :: () {
     using state.d3d12;
 
     // app resource;
-    safe_release_and_reset(*scene_vertex_buffer);
-    safe_release_and_reset(*scene_index\_buffer);
     safe_release_and_reset(*post_vertex\_buffer);
+    deinit(*scene_vbuffer);
+    deinit(*scene_ibuffer);
     deinit(*scene_constant_buffer);
     deinit(*world_matrix_buffer);
     deinit(*texture);

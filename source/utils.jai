@@ -1,4 +1,4 @@
-SIZE_MAX :: 0x4_0000;
+MAX_SIZE :: 0x4_0000;
 
 GetImageBytesPerTexel :: inline (tf: DXGI_FORMAT) -> int {
 
@@ -171,7 +171,7 @@ UpdateSubresource :: inline (
 
     required_size : u64 = 0;
     mem_to_alloc  : s64 = cast(s64) ((size_of(D3D12_PLACED_SUBRESOURCE_FOOTPRINT) + size_of(u32) + size_of(u64)) * num_subresource);
-    if mem_to_alloc > SIZE_MAX return 0;
+    if mem_to_alloc > MAX_SIZE return 0;
 
     mem := alloc(mem_to_alloc); defer free(mem);
     if mem == null return 0;
